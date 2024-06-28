@@ -43,7 +43,7 @@ class Cube {
     constructor(x, y, z, s = 1) {
         this.scale = s;
         this.position = { x, y, z };
-        this.rotation = { x, y, z };
+        this.rotation = { x: 0, y: 0, z: 0 };
     }
     draw() {
         const points = [];
@@ -78,8 +78,11 @@ class Cube {
         view.stroke();
     }
     toLocalPoint(p) {
-        
-    }
+        const r1 = this.rotate(p, this.rotation, "x");
+        const r2 = this.rotate(r1, this.rotation, "y");
+        const r3 = this.rotate(r2, this.rotation, "z");
+        return r3;
+     }
     toWorldPoint(p) {
         const wp = { x: this.position.x + p.x * this.scale, 
             y: this.position.y + p.y * this.scale, 
@@ -113,9 +116,17 @@ const gui = new dat.GUI();
 gui.add(cube.position, "x", -20, 20);
 gui.add(cube.position, "y", -20, 20);
 gui.add(cube.position, "z", 10, 200);
+gui.add(cube.rotation, "x", -20, 20);
+gui.add(cube.rotation, "y", -20, 20);
+gui.add(cube.rotation, "z", 10, 200);
 
 function animate() {
     view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+
+    cube.rotation.x += 0.01;
+    cube.rotation.y += 0.01;
+    cube.rotation.z += 0.01;
+
     cube.draw();
 
     requestAnimationFrame(animate);
