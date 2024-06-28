@@ -43,11 +43,13 @@ class Cube {
     constructor(x, y, z, s = 1) {
         this.scale = s;
         this.position = { x, y, z };
+        this.rotation = { x, y, z };
     }
     draw() {
         const points = [];
         for (let i = 0; i < this.model.length; ++i) {
-            const wp = this.toWorldPoint(this.model[i]);
+            const lp = this.toLocalPoint(this.model[i])
+            const wp = this.toWorldPoint(lp);
             const cp = this.toXyPoint(wp);
             points.push(cp);
         }
@@ -75,6 +77,9 @@ class Cube {
         this.lineTo(points[7]);
         view.stroke();
     }
+    toLocalPoint(p) {
+        
+    }
     toWorldPoint(p) {
         const wp = { x: this.position.x + p.x * this.scale, 
             y: this.position.y + p.y * this.scale, 
@@ -88,6 +93,16 @@ class Cube {
           {x: p.x / p.z * canvas.width, 
           y: p.y / p.z * canvas.width } : null;
         return xyp;
+    }
+    rotate(p, rotation, axis) {
+        const angle = rotation[axis];
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        switch(axis) {
+            case "x": return { x: p.x, y: p.y * cos - p.z * sin, z: p.y * sin + p.z * cos };
+            case "y": return { x: p.x * cos - p.z * sin, y: p.y, z: p.x * sin + p.z * cos };
+            case "z": return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z };
+        }
     }
     moveTo(p) { view.moveTo(p.x, p.y); }
     lineTo(p) { view.lineTo(p.x, p.y); }
