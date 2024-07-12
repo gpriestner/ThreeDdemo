@@ -3,9 +3,10 @@
 <head>
     <title>3D Demo</title>
 </head>
-<body style="margin: 0;">
-    <canvas style="background-color: black; position: fixed;"></canvas>
+<body style="margin: 0; background-image: url('res/bkg02.png'); background-repeat: repeat;">
+    <canvas style="background-color: rgba(0, 0, 0, 0); position: fixed;"></canvas>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.js" integrity="sha512-Mcz+Mt8k23j06ycA5EJGfyXbtzB6xqEoJxjGftQQoed/zQzem9Lt21LRymjlcm+NUsbF0LOHgfdN8LO8GtKDOw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='https://mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()</script>
     <script src="index.js"></script>
 </body>
 </html>
