@@ -362,9 +362,8 @@ class Face extends GameObject {
         view.fill();
     }
     drawLines(xy, o = 0) {
-        this.moveTo(xy[0], o);
-        for (let i = 1; i < xy.length; ++i) this.lineTo(xy[i], o); 
-        this.lineTo(xy[0], o);
+        this.moveTo(xy[xy.length - 1], o);
+        for(const p of xy) this.lineTo(p, o);
     }
     showNormals(cp, camNormal) {
         const center = centroid(cp);
@@ -695,7 +694,7 @@ const lightSource2 = new PointLight(0, 0, -50);
 const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 2, 0);
 //const cube = new Cube(0, 0, 200, 1);
-const sphere = new Sphere(0, 0, 20, 128);
+const sphere = new Sphere(0, 0, 20, 48);
 //const sphere2 = new Sphere(20, 20, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
 const scene = new Scene();
