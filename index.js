@@ -154,6 +154,11 @@ function centroid(verts) {
     z /= verts.length;
     return { x, y, z };
 }
+function centroid2d(face) {
+    const x = face.reduce((a, b) => a + b.xy.x, 0) / face.length;
+    const y = face.reduce((a, b) => a + b.xy.y, 0) / face.length;
+    return { x, y };
+}
 function drawSkew(image, p1, p2, p3, p4) {
     if(p1 && p2 && p3 && p4) {
         const w = image.naturalWidth;
@@ -187,8 +192,33 @@ function drawTransform(image, m, p1, p2, p3) {
     view.drawImage(image, 0, 0);
     view.restore();
 }
-function moveTo(p) { if(p) view.moveTo(p.x, p.y); }
-function lineTo(p) { if(p) view.lineTo(p.x, p.y); }
+function moveTo(p, o = 0) { if(p) view.moveTo(p.x + o, p.y + o); }
+function lineTo(p, o = 0) { if(p) view.lineTo(p.x + o, p.y + o); }
+function addColorPoint(p, center, face) {
+    const d = dist(p.xy, center);
+    const grad = view.createRadialGradient(p.xy.x, p.xy.y, 0, p.xy.x, p.xy.y, d);
+    grad.addColorStop(0, `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`);
+    grad.addColorStop(1, `rgba(${p.color[0]},${p.color[1]},${p.color[2]},0)`);
+    view.fillStyle = grad;
+    fillRect(face);
+}
+function shadeFace(face) {
+    const center = centroid2d(face);
+    view.globalCompositeOperation = "lighten";
+    for(p of face) addColorPoint(p, center, face);
+    view.globalCompositeOperation = "source-over";
+}
+function fillRect(face) {
+    view.beginPath();
+    moveTo(face[face.length - 1].xy);
+    for(const p of face) lineTo(p.xy);    
+    moveTo(face[face.length - 1].xy, 1);
+    for(const p of face) lineTo(p.xy, 1);    
+    view.fill();
+}
+function dist(p1, p2, factor = 1.5) {
+    return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2) * factor;
+}
 //#endregion
 class Pt {
     constructor(x = 0, y = 0, z = 0) {
@@ -276,70 +306,77 @@ class Face extends GameObject {
         for (const i of this.verts) localPoints.push(points[i]);
         return localPoints;
     }
-    draw(xyPoints, worldPoints, cameraPoints, color, camera) {
-        const wp = this.getFacePoints(worldPoints);
-        const xy = this.getFacePoints(xyPoints);
+    draw(pos, points, color, camera) {
+        //const wp = this.getFacePoints(worldPoints);
+        //const xy = this.getFacePoints(xyPoints);
+        const fp = this.getFacePoints(points);
 
         // calculate 2 face vectors
-        const faceEdge1 = subtractVector(wp[1], wp[0]);
-        const faceEdge2 = subtractVector(wp[2], wp[0]);
+        const faceEdge1 = subtractVector(fp[1].wp, fp[0].wp);
+        const faceEdge2 = subtractVector(fp[2].wp, fp[0].wp);
         
         // calculate normal to face
         const faceNormal = crossProduct(faceEdge1, faceEdge2);
-        const cameraVector = subtractVector(wp[0], camera.position);
+        const cameraVector = subtractVector(fp[0].wp, camera.position);
         const normalisedCameraVector = normaliseVector(cameraVector);
         const dpCamera = dotProduct(normalisedCameraVector, faceNormal);
         const visible = dpCamera > 0;
 
         if (visible) {
-            let red = 0, green = 0, blue = 0;
-            for (const lightSource of scene.lights) {
-                const lightVector = subtractVector(wp[0], lightSource.position);
-                const normalisedLightVector = normaliseVector(lightVector);
-                let dpLight = dotProduct(normalisedLightVector, faceNormal);
-                const ambientLightLevel = 0.33;
-                if (dpLight < ambientLightLevel) dpLight = ambientLightLevel;
-                red += color.r * dpLight * lightSource.red;
-                green += color.g * dpLight * lightSource.green;
-                blue += color.b * dpLight * lightSource.blue;
-            }
+            for (const p of fp) p.normal = normaliseVector(subtractVector(pos, p.wp));
+            
+            for (const p of fp) this.calcColorPoint(p, color, scene.lights);
+
+            // let red = 0, green = 0, blue = 0;
+            // for (const lightSource of scene.lights) {
+            //     const lightVector = subtractVector(fp[0].wp, lightSource.position);
+            //     const normalisedLightVector = normaliseVector(lightVector);
+            //     let dpLight = dotProduct(normalisedLightVector, faceNormal);
+            //     const ambientLightLevel = 0.33;
+            //     if (dpLight < ambientLightLevel) dpLight = ambientLightLevel;
+            //     red += color.r * dpLight * lightSource.red;
+            //     green += color.g * dpLight * lightSource.green;
+            //     blue += color.b * dpLight * lightSource.blue;
+            // }
 
             // is current face facing the spotlight?
-            const facingSpot = dotProduct(spotlight1.direction, faceNormal);
-            if (facingSpot < 0) {
-                //const center = centroid(wp);
-                const spotlightVector = normaliseVector(subtractVector(spotlight1.position, wp[0]));
-                // how similar is the spotlight -> face vector compared to the spotlight's direction vector?
-                const dpSpotlight = dotProduct(spotlightVector, spotlight1.direction);
-                if (1 - dpSpotlight < spotlight1.dpVariance) {
-                    const blendColor = spotlight1.colorA;
+            // const facingSpot = dotProduct(spotlight1.direction, faceNormal);
+            // if (facingSpot < 0) {
+            //     //const center = centroid(wp);
+            //     const spotlightVector = normaliseVector(subtractVector(spotlight1.position, fp[0].wp));
+            //     // how similar is the spotlight -> face vector compared to the spotlight's direction vector?
+            //     const dpSpotlight = dotProduct(spotlightVector, spotlight1.direction);
+            //     if (1 - dpSpotlight < spotlight1.dpVariance) {
+            //         const blendColor = spotlight1.colorA;
 
-                    const newRed = red * spotlight1.strength * -facingSpot;
-                    if (newRed > red) {
-                        red = newRed;
-                        if (red > 255) red = 255;
-                    }
+            //         const newRed = red * spotlight1.strength * -facingSpot;
+            //         if (newRed > red) {
+            //             red = newRed;
+            //             if (red > 255) red = 255;
+            //         }
 
-                    const newGreen = green * spotlight1.strength * -facingSpot;
-                    if (newGreen > green) {
-                        green = newGreen;
-                        if (green > 255) green = 255;
-                    }
+            //         const newGreen = green * spotlight1.strength * -facingSpot;
+            //         if (newGreen > green) {
+            //             green = newGreen;
+            //             if (green > 255) green = 255;
+            //         }
 
-                    const newBlue = blue * spotlight1.strength * -facingSpot;
-                    if (newBlue > blue) {
-                        blue = newBlue;
-                        if (blue > 255) blue = 255;
-                    }
+            //         const newBlue = blue * spotlight1.strength * -facingSpot;
+            //         if (newBlue > blue) {
+            //             blue = newBlue;
+            //             if (blue > 255) blue = 255;
+            //         }
 
-                    //col = "yellow";
-                }
-            }
-            let col = `rgba(${red},${green},${blue},1)`;
+            //         //col = "yellow";
+            //     }
+            // }
 
-            view.fillStyle = col;
-            view.strokeStyle = col;
-            this.drawFace(xy);
+            shadeFace(fp);
+
+            // let col = `rgba(${red},${green},${blue},1)`;
+            // view.fillStyle = col;
+            // view.strokeStyle = col;
+            // this.drawFace(fp);
 
             //drawSkew(testImage, xy[0], xy[1], xy[2], xy[3]);
 
@@ -350,20 +387,34 @@ class Face extends GameObject {
             // this.showNormals(cp, camNormal);
         }
     }
+    calcColorPoint(point, color, lightSources) {
+        let red = 0, green = 0, blue = 0;
+        for (const lightSource of lightSources) {
+            const lightVector = subtractVector(point.wp, lightSource.position);
+            const normalisedLightVector = normaliseVector(lightVector);
+            let dpLight = dotProduct(normalisedLightVector, point.normal);
+            const ambientLightLevel = 0.33;
+            if (dpLight < ambientLightLevel) dpLight = ambientLightLevel;
+            red += color.r * dpLight;// * lightSource.red;
+            green += color.g * dpLight;// * lightSource.green;
+            blue += color.b * dpLight;// * lightSource.blue;
+        }
+        point.color = [red, green, blue];
+    }
     equalToOne(value, variance) {
         const diff = 1 - value;
         return diff < variance;
     }
-    drawFace(xy) {
+    drawFace(points) {
         view.beginPath();
-        this.drawLines(xy);
+        this.drawLines(points);
         //view.stroke();
-        if (gameSettings.doubleDraw) this.drawLines(xy, 1);
+        if (gameSettings.doubleDraw) this.drawLines(points, 1);
         view.fill();
     }
-    drawLines(xy, o = 0) {
-        this.moveTo(xy[xy.length - 1], o);
-        for(const p of xy) this.lineTo(p, o);
+    drawLines(points, o = 0) {
+        this.moveTo(points[points.length - 1].xy, o);
+        for(const p of points) this.lineTo(p.xy, o);
     }
     showNormals(cp, camNormal) {
         const center = centroid(cp);
@@ -458,21 +509,22 @@ class Sphere extends GameObject {
 }
     draw(camera) {
         view.fillStyle = "white";
-        const worldPoints = [], cameraPoints = [], xyPoints = [];
+        const worldPoints = [], cameraPoints = [], xyPoints = [], points = [];
         let c = 0;
         for(const p of this.verts) {
             //const lp = this.toLocalPoint(p);
             const wp = this.toWorldPoint(p); // lp
             const cp = this.toCameraPoint(wp, camera);
             const xy = this.toXyPoint(cp);
-            worldPoints.push(wp);
-            cameraPoints.push(cp);
-            xyPoints.push(xy);
+            // worldPoints.push(wp);
+            // cameraPoints.push(cp);
+            // xyPoints.push(xy);
+            points.push({ wp, cp, xy });
             //this.setPixel(xy);
             //this.text(c, xy);
             ++c;
         }
-        for(const f of this.faces) f.draw(xyPoints, worldPoints, cameraPoints, this.color, camera);
+        for(const f of this.faces) f.draw(this.position, points, this.color, camera);
     }
     setPixel(p) { if (p) view.fillRect(p.x - this.dotSize / 2, p.y - this.dotSize / 2, this.dotSize, this.dotSize); }
     text(t, p) {
@@ -516,17 +568,18 @@ class Cube extends GameObject {
         if (this.auto.x) this.rotation.x += this.auto.x;
         if (this.auto.y) this.rotation.y += this.auto.y;
         if (this.auto.z) this.rotation.z += this.auto.z;
-        const worldPoints = [], cameraPoints = [], xyPoints = [];
+        const worldPoints = [], cameraPoints = [], xyPoints = [], points = [];
         for (let i = 0; i < this.verts.length; ++i) {
             const lp = this.toLocalPoint(this.verts[i]);
             const wp = this.toWorldPoint(lp);
             const cp = this.toCameraPoint(wp, camera);
-            const xyp = this.toXyPoint(cp);
-            worldPoints.push(wp);
-            cameraPoints.push(cp);
-            xyPoints.push(xyp);
+            const xy = this.toXyPoint(cp);
+            // worldPoints.push(wp);
+            // cameraPoints.push(cp);
+            // xyPoints.push(xy);
+            points.push({ wp, cp, xy });
         }
-        for(const f of this.faces) f.draw(xyPoints, worldPoints, cameraPoints, this.color, camera);
+        for(const f of this.faces) f.draw(this.position, points, this.color, camera);
     }
 }
 class PointLight extends GameObject {
@@ -694,7 +747,7 @@ const lightSource2 = new PointLight(0, 0, -50);
 const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 2, 0);
 //const cube = new Cube(0, 0, 200, 1);
-const sphere = new Sphere(0, 0, 20, 48);
+const sphere = new Sphere(0, 0, 20, 16);
 //const sphere2 = new Sphere(20, 20, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
 const scene = new Scene();
