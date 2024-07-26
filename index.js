@@ -363,13 +363,8 @@ class GameObject {
         return rx;
     }
     toXyPoint(p) {
-        if (p == null) return null;
-        const xy = 
-          p.z != 0 ? 
-          {
-            x: p.x / p.z * canvas.width, 
-            y: p.y / p.z * canvas.width 
-          } : null;
+        if (p == null || p.z == 0) return null;
+        const xy = { x: p.x / p.z * canvas.width, y: p.y / p.z * canvas.width };
         return xy;
     }
     rotate(p, rotation, axis = "y") {
@@ -393,11 +388,6 @@ class GameObject {
         const dy = (this.position.y - camera.position.y) ** 2;
         const dz = (this.position.z - camera.position.z) ** 2;
         return Math.sqrt(dx + dy + dz);
-    }
-    getFacePoints(points) {
-        const localPoints = [];
-        for (const i of this.verts) localPoints.push(points[i]);
-        return localPoints;
     }
 }
 class MultiFace extends GameObject {
@@ -454,9 +444,12 @@ class Face extends GameObject {
         this.id = Face.count++;
         for(const a of arguments) this.verts.push(a);
     }
+    getFacePoints(points) {
+        const localPoints = [];
+        for (const i of this.verts) localPoints.push(points[i]);
+        return localPoints;
+    }
     draw(pos, points, color, camera) {
-        //const wp = this.getFacePoints(worldPoints);
-        //const xy = this.getFacePoints(xyPoints);
         const fp = this.getFacePoints(points);
 
         // calculate 2 face vectors to describe the plane of the face
@@ -691,19 +684,14 @@ class Sphere extends GameObject {
 }
     draw(camera) {
         view.fillStyle = "white";
-        const worldPoints = [], cameraPoints = [], xyPoints = [], points = [];
+        const points = [];
         let c = 0;
         for(const p of this.model) {
             //const lp = this.toLocalPoint(p);
             const wp = this.toWorldPoint(p); // lp
             const cp = this.toCameraPoint(wp, camera);
             const xy = this.toXyPoint(cp);
-            // worldPoints.push(wp);
-            // cameraPoints.push(cp);
-            // xyPoints.push(xy);
             points.push({ wp, cp, xy });
-            //this.setPixel(xy);
-            //this.text(c, xy);
             ++c;
         }
         for(const f of this.faces) f.draw(this.position, points, this.color, camera);
@@ -717,12 +705,11 @@ class Sphere extends GameObject {
 class Cylinder extends GameObject {
     color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
     model = [ new Pt(0, 1, 0), new Pt(0, 1, 1) ];
-    constructor(x, y, z, s = 12, sx = 1, sy = sx, sz = sy, ns = 1, ss = ns) {
+    constructor(x, y, z, sc = 1, s = 6, sx = 1, sy = 1, sz = 1, northScale = 1, southScale = 1) {
         super();
         this.position = { x, y, z };
         this.rotation = { x: 0, y: 0, z: 0};
-        //this.scale = 4;
-        //this.dotSize = 2;
+        this.scale = sc;
         const np = this.model[0];
         const sp = reverseVector(np);
         const step = Math.PI * 2 / s;
@@ -739,32 +726,22 @@ class Cylinder extends GameObject {
 
         //for (let i = 0; i < this.model.length; ++ i) this.model[i].id = i;
 
-        for (const p of this.model) {
-            p.x *= sx;
-            p.y *= sy;
-            p.z *= sz;
-        }
-        np.y *= ns;
-        sp.y *= ss;
+        for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz; }
+        np.y *= northScale;
+        sp.y *= southScale;
 
         this.faces = [];
         // populate top faces (triangles)
-        for (let i = 2; i <= s; ++i) {
-            this.faces.push(new Face(0, i, i - 1));
-        }
+        for (let i = 2; i <= s; ++i) this.faces.push(new Face(0, i, i - 1));
         this.faces.push(new Face(0, 1, s));
 
         // populate bottom faces (triangles)
-        const spi = s * 2 + 1;
-        for (let i = s + 1; i <= s * 2 - 1; ++i) {
-            this.faces.push(new Face(spi, i, i + 1));
-        }
+        const spi = s * 2 + 1; // south pole index
+        for (let i = s + 1; i <= s * 2 - 1; ++i) this.faces.push(new Face(spi, i, i + 1));
         this.faces.push(new Face(spi, spi - 1,  s + 1));
 
         // populate side faces (squares)
-        for (let i = 1; i < s; ++ i) {
-            this.faces.push(new Face(i, i + 1, i + s + 1, i + s));
-        }
+        for (let i = 1; i < s; ++ i) this.faces.push(new Face(i, i + 1, i + s + 1, i + s));
         this.faces.push(new Face(s, 1, s + 1, s * 2));
     }
     draw(camera) {
@@ -786,8 +763,6 @@ class Cylinder extends GameObject {
 }
 class Cube extends GameObject {
     color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
-    //color = { r: Math.random() * 255, g: Math.random() * 255, b: Math.random() * 255 };
-    //color = { r: 255, g: 255, b: 255 };
     model = [
         new Pt(-1, 1, -1),  // 0 top-left front
         new Pt(1, 1, -1),   // 1 top-right front
@@ -810,22 +785,18 @@ class Cube extends GameObject {
         x ??= Math.random() * 50 - 25;
         y ??= Math.random() * 50 - 25;
         z ??= Math.random() * 190 + 10
-        for(const p of this.model) {
-            p.x *= sx;
-            p.y *= sy;
-            p.z *= sz;
-        }
+        for(const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz; }
         this.position = { x, y, z };
         this.rotation = { x: 0, y: 0, z: 0 };
         const maxRotate = 0.05;
         const maxOffset = maxRotate / 2;
-        //this.auto = { x: Math.random() * maxRotate - maxOffset, y: Math.random() * maxRotate - maxOffset, z: Math.random() * maxRotate - maxOffset };
+        this.auto = { /*x: Math.random() * maxRotate - maxOffset,*/ y: Math.random() * maxRotate - maxOffset/*, z: Math.random() * maxRotate - maxOffset*/ };
     }
     draw(camera) {
         if (this.auto?.x) this.rotation.x += this.auto.x;
         if (this.auto?.y) this.rotation.y += this.auto.y;
         if (this.auto?.z) this.rotation.z += this.auto.z;
-        const worldPoints = [], cameraPoints = [], xyPoints = [], points = [];
+        const points = [];
         for (let i = 0; i < this.model.length; ++i) {
             const lp = this.toLocalPoint(this.model[i]);
             const wp = this.toWorldPoint(lp);
@@ -1040,7 +1011,7 @@ const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 5, -70);
 const cube = new Cube(0, 0, 50, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 3, 32, 4, 0.5);
-const cylinder = new Cylinder(-10, 0, 10, 24, 3, 0.5, 6, 5, 1);
+const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
 const pyramid = new Pyramid(0, -10, 5, 1, 1, 10);
 const wedge = new Wedge(10, 0, 20, 3, 1, 5);
 const sphere2 = new Sphere(20, 20, 20, 16);
