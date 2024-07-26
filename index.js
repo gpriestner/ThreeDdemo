@@ -9,8 +9,10 @@ function resize() {
     view.translate(canvas.width / 2, canvas.height / 2);
     view.scale(1, -1);
 
-    view.lineWidth = 2;
+    view.lineWidth = 5;
+    view.lineJoin = "round";
     view.strokeStyle = "black";
+    
 }
 
 resize();
@@ -20,7 +22,7 @@ addEventListener("resize", resize);
 // view.moveTo(0, 0);
 // view.lineTo(100, 100);
 // view.stroke();
-function dotProcuct(v1, v2) {
+function dotProduct(v1, v2) {
     return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
 }
 function crossProduct(v1, v2) {
@@ -46,7 +48,7 @@ class Pt {
 class Face {
     i = [];
     constructor() { for (const i of arguments) { this.i.push(i); } }
-    draw(wPoints, xYpoints) {
+    draw(wPoints, xYpoints, color) {
         const faceWorldPoints = [];
         for (const i of this.i) faceWorldPoints.push(wPoints[i]);
         const faceXyPoints = [];
@@ -59,81 +61,40 @@ class Face {
         const normalVector = crossProduct(vectorAB, vectorAC);
         const cameraVector = faceWorldPoints[0];
         const normalizedCameraVector = normalizeVector(cameraVector);
-        const dp = dotProcuct(normalVector, normalizedCameraVector);
+        const dp = dotProduct(normalVector, normalizedCameraVector);
         const visible = dp < 0;
         
         if(visible) {
+            //let r = color[0], g = color[1], b = color[2];
+            const lightVector = subtractVector(wPoints[0], light.position);
+            const lightUnitVector = normalizeVector(lightVector);
+            let dpLight = dotProduct(normalVector, lightUnitVector);
+
+            const ambientLightLevel = 0.35;
+            if (dpLight < ambientLightLevel) dpLight = ambientLightLevel;
+            let r = color[0] * dpLight * (light.color[0] / 255);
+            if (r > 255) r = 255;
+            let g = color[1] * dpLight * (light.color[1] / 255);
+            if (g > 255) g = 255;
+            let b = color[2] * dpLight * (light.color[2] / 255);
+            if (b > 255) b = 255;
+
+            view.fillStyle = `rgb(${r},${g},${b})`;
+            view.lineWidth = 5;
             view.beginPath();
             this.moveTo(faceXyPoints[0]);
             this.lineTo(faceXyPoints[1]);
             this.lineTo(faceXyPoints[2]);
             this.lineTo(faceXyPoints[3]);
             this.lineTo(faceXyPoints[0]);
-            view.stroke();
+            view.fill();
+            //view.stroke();
         }
     }
     moveTo(p) { view.moveTo(p.x, p.y); }
     lineTo(p) { view.lineTo(p.x, p.y); }
 }
-class Cube {
-    model = [
-        new Pt(-1, 1, -1), 
-        new Pt(1, 1, -1), 
-        new Pt(1, -1, -1), 
-        new Pt(-1, -1, -1),
-        new Pt(-1, 1, 1), 
-        new Pt(1, 1, 1), 
-        new Pt(1, -1, 1), 
-        new Pt(-1, -1, 1)
-    ]
-    faces = [
-        new Face(0,1,2,3), // front
-        new Face(5,4,7,6), // back
-        new Face(4,5,1,0), // top
-        new Face(3,2,6,7), // bottom
-        new Face(4,0,3,7), // left
-        new Face(1,5,6,2), // right
-    ]
-    constructor(x, y, z, s = 1) {
-        this.scale = s;
-        this.position = { x, y, z };
-        this.rotation = { x: 0, y: 0, z: 0 };
-    }
-    draw() {
-        const points = [], wPoints = [], xYpoints = [];
-        for (let i = 0; i < this.model.length; ++i) {
-            const lp = this.toLocalPoint(this.model[i])
-            const wp = this.toWorldPoint(lp);
-            wPoints.push(wp);
-            const cp = this.toXyPoint(wp);
-            xYpoints.push(cp);
-        }
-
-        for (const f of this.faces) f.draw(wPoints, xYpoints);
-
-        // view.beginPath();
-        // this.moveTo(points[0]);
-        // this.lineTo(points[1]);
-        // this.lineTo(points[2]);
-        // this.lineTo(points[3]);
-        // this.lineTo(points[0]);
-
-        // this.moveTo(points[4]);
-        // this.lineTo(points[5]);
-        // this.lineTo(points[6]);
-        // this.lineTo(points[7]);
-        // this.lineTo(points[4]);
-
-        // this.moveTo(points[0]);
-        // this.lineTo(points[4]);
-        // this.moveTo(points[1]);
-        // this.lineTo(points[5]);
-        // this.moveTo(points[2]);
-        // this.lineTo(points[6]);
-        // this.moveTo(points[3]);
-        // this.lineTo(points[7]);
-        // view.stroke();
-    }
+class GameObject {
     toLocalPoint(p) {
         const r1 = this.rotate(p, this.rotation, "x");
         const r2 = this.rotate(r1, this.rotation, "y");
@@ -167,24 +128,125 @@ class Cube {
     moveTo(p) { view.moveTo(p.x, p.y); }
     lineTo(p) { view.lineTo(p.x, p.y); }
 }
+class Cube extends GameObject {
+    color = [128, 128, 128];
+    model = [
+        new Pt(-1, 1, -1), 
+        new Pt(1, 1, -1), 
+        new Pt(1, -1, -1), 
+        new Pt(-1, -1, -1),
+        new Pt(-1, 1, 1), 
+        new Pt(1, 1, 1), 
+        new Pt(1, -1, 1), 
+        new Pt(-1, -1, 1)
+    ]
+    faces = [
+        new Face(0,1,2,3), // front
+        new Face(5,4,7,6), // back
+        new Face(4,5,1,0), // top
+        new Face(3,2,6,7), // bottom
+        new Face(4,0,3,7), // left
+        new Face(1,5,6,2), // right
+    ]
+    constructor(x, y, z, s = 1) {
+        super();
+        this.scale = s;
+        this.position = { x, y, z };
+        this.rotation = { x: 0, y: 0, z: 0 };
+    }
+    draw() {
+        const points = [], wPoints = [], xYpoints = [];
+        for (let i = 0; i < this.model.length; ++i) {
+            const lp = this.toLocalPoint(this.model[i])
+            const wp = this.toWorldPoint(lp);
+            wPoints.push(wp);
+            const cp = this.toXyPoint(wp);
+            xYpoints.push(cp);
+        }
 
-const cube = new Cube(0, 0, 20, 4);
+        for (const f of this.faces) f.draw(wPoints, xYpoints, this.color);
+
+        // view.beginPath();
+        // this.moveTo(points[0]);
+        // this.lineTo(points[1]);
+        // this.lineTo(points[2]);
+        // this.lineTo(points[3]);
+        // this.lineTo(points[0]);
+
+        // this.moveTo(points[4]);
+        // this.lineTo(points[5]);
+        // this.lineTo(points[6]);
+        // this.lineTo(points[7]);
+        // this.lineTo(points[4]);
+
+        // this.moveTo(points[0]);
+        // this.lineTo(points[4]);
+        // this.moveTo(points[1]);
+        // this.lineTo(points[5]);
+        // this.moveTo(points[2]);
+        // this.lineTo(points[6]);
+        // this.moveTo(points[3]);
+        // this.lineTo(points[7]);
+        // view.stroke();
+    }
+}
+
+class PointLight extends GameObject {
+    color = [255, 255, 255];
+    raduis = 400;
+    constructor(x, y, z) {
+        super();
+        this.position = { x, y, z };
+    }
+    draw() {
+        const xy = this.toXyPoint(this.position);
+        const dist = Math.sqrt(this.position.x ** 2 + this.position.y **2 + this.position.z ** 2);
+        const radius = this.raduis / dist;
+        view.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
+        view.beginPath();
+        view.arc(xy.x, xy.y, radius, 0, Math.PI * 2);
+        view.fill();
+    }
+}
+
+class Scene {
+    objects = [];
+    add(o) { this.objects.push(o); }
+    draw() { for (const o of this.objects) o.draw(); }
+}
+
+const cube = new Cube(0, 0, 20, 2);
+const light = new PointLight(5, 5, 20);
+
+const scene = new Scene();
+scene.add(light);
+scene.add(cube);
+
 const gui = new dat.GUI();
-gui.add(cube.position, "x", -20, 20);
-gui.add(cube.position, "y", -20, 20);
-gui.add(cube.position, "z", 10, 200);
-gui.add(cube.rotation, "x", -20, 20);
-gui.add(cube.rotation, "y", -20, 20);
-gui.add(cube.rotation, "z", 10, 200);
+gui.add(cube, "scale", 0.5, 10);
+gui.addColor(cube, "color");
+const cubePosition = gui.addFolder("Position");
+cubePosition.add(cube.position, "x", -20, 20);
+cubePosition.add(cube.position, "y", -20, 20);
+cubePosition.add(cube.position, "z", 10, 200);
+const cubeRotation = gui.addFolder("Rotation");
+cubeRotation.add(cube.rotation, "x", -20, 20);
+cubeRotation.add(cube.rotation, "y", -20, 20);
+cubeRotation.add(cube.rotation, "z", 10, 200);
+const lightFolder = gui.addFolder("Light");
+lightFolder.addColor(light, "color");
+lightFolder.add(light.position, "x", -10, 10);
+lightFolder.add(light.position, "y", -10, 10);
+lightFolder.add(light.position, "z", 1, 50);
 
 function animate() {
     view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
 
-    cube.rotation.x += 0.01;
-    cube.rotation.y += 0.01;
-    cube.rotation.z += 0.01;
+    cube.rotation.x += 0.005;
+    cube.rotation.y += 0.005;
+    cube.rotation.z += 0.005;
 
-    cube.draw();
+    scene.draw();
 
     requestAnimationFrame(animate);
 }
