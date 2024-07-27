@@ -13,9 +13,9 @@ class KeyState {
     constructor(isPressed, isReleased) {
       this.isPressed = isPressed;
       this.isReleased = isReleased;
-    }
+}
   }
-  class Keyboard {
+class Keyboard {
     static Keyboard = (() => {
       addEventListener("keydown", Keyboard.keyDown);
       addEventListener("keyup", Keyboard.keyUp);
@@ -50,24 +50,38 @@ class KeyState {
       } else return false;
     }
   }
-  class GameInput {
+class Mouse {
+    static RightDown = false;
+    static MiddleDown = false;
+    static #Mouse = (() => {
+        canvas.addEventListener("mousedown", e => { 
+            if (e.button == 2) Mouse.RightDown = true;
+            if (e.button == 1) Mouse.MiddleDown = true;
+            });
+        canvas.addEventListener("mouseup", e => { 
+            if(e.button == 2) Mouse.RightDown = false; 
+            if(e.button == 1) Mouse.MiddleDown = false; 
+        });
+    })();
+}
+class GameInput {
     static get isForward() {
-      return Keyboard.isDown("KeyW");
+        return Keyboard.isDown("KeyW") || Mouse.RightDown;
     }
     static get isLeft() {
-      return Keyboard.isDown("KeyA");
+        return Keyboard.isDown("KeyA");
     }
     static get isRight() {
-      return Keyboard.isDown("KeyD");
+        return Keyboard.isDown("KeyD");
     }
     static get isTurnLeft() {
         return Keyboard.isDown("ArrowLeft");
-      }
-      static get isTurnRight() {
-        return Keyboard.isDown("ArrowRight");
-      }
-      static get isBack() {
-      return Keyboard.isDown("KeyS");
+        }
+    static get isTurnRight() {
+    return Keyboard.isDown("ArrowRight");
+    }
+    static get isBack() {
+    return Keyboard.isDown("KeyS") || Mouse.MiddleDown;
     }
     static get isUp() {
         return Keyboard.isDown("ArrowUp");
@@ -76,7 +90,7 @@ class KeyState {
         return Keyboard.isDown("ArrowDown");
     }
     static get isReset() { return Keyboard.isPressed("KeyR"); }
-  }
+}
 //#endregion
 //#region Resize handler
 function resize() {
@@ -88,25 +102,29 @@ function resize() {
     view.lineWidth = 1;
     view.strokeStyle = "black";
     view.lineJoin = "bevel";
+    view.shadowOffsetX = 1;
+    view.shadowOffsetY = 1;
 }
 resize();
 addEventListener("resize", resize);
 //#endregion
 //#region Pointer Lock
 document.addEventListener("pointerlockchange", lockChange);
-canvas.addEventListener("click", async () => {
-    if (!document.pointerLockElement) {
-      await canvas.requestPointerLock({
-        unadjustedMovement: true,
-      });
-    } else {
-        await document.exitPointerLock();
+canvas.addEventListener("click", async e => {
+    if (e.button == 0) {
+        if (!document.pointerLockElement) {
+        await canvas.requestPointerLock({
+            unadjustedMovement: true,
+        });
+        } else {
+            await document.exitPointerLock();
+        }
     }
   }
 );
 function lockChange() {
-if (document.pointerLockElement === canvas) document.addEventListener("mousemove", updatePosition);
-else document.removeEventListener("mousemove", updatePosition);
+    if (document.pointerLockElement === canvas) document.addEventListener("mousemove", updatePosition);
+    else document.removeEventListener("mousemove", updatePosition);
 }
 function updatePosition(e) {
     const dx = -e.movementX * 1.30;
@@ -319,6 +337,7 @@ class Pt {
 }
 class GameSettings {
     doubleDraw = false;
+    showCrossHair = false;
 }
 const gameSettings = new GameSettings();
 class GameObject {
@@ -449,7 +468,7 @@ class Face extends GameObject {
         for (const i of this.verts) localPoints.push(points[i]);
         return localPoints;
     }
-    draw(pos, points, color, camera) {
+    draw(parentPosition, points, color, camera) {
         const fp = this.getFacePoints(points);
 
         // calculate 2 face vectors to describe the plane of the face
@@ -458,32 +477,19 @@ class Face extends GameObject {
         
         // calculate if face is visible
         const faceNormal = crossProduct(faceEdge1, faceEdge2);
-        const cameraVector = subtractVector(fp[0].wp, camera.position);
-        const normalisedCameraVector = normaliseVector(cameraVector);
-        const dpCamera = dotProduct(normalisedCameraVector, faceNormal);
-        const visible = dpCamera > 0;
+        const cameraVector = normaliseVector(subtractVector(fp[0].wp, camera.position));
+        const visible = dotProduct(cameraVector, faceNormal) > 0;
 
         if (visible) {
-            for (const p of fp) p.normal = normaliseVector(subtractVector(pos, p.wp));
-            
+            //for (const p of fp) p.normal = normaliseVector(subtractVector(parentPosition, p.wp));
             //for (const p of fp) this.calcColorPoint(p, color, scene.lights);
 
-            // let red = 0, green = 0, blue = 0;
-            // let newColor;
-            for (const lightSource of scene.lights) {
-                const lightVector = subtractVector(fp[0].wp, lightSource.position);
+            for (const light of scene.lights) {
+                const lightVector = subtractVector(fp[0].wp, light.position);
                 const normalisedLightVector = normaliseVector(lightVector);
-                let dpLight = dotProduct(normalisedLightVector, faceNormal);
+                const dpLight = dotProduct(normalisedLightVector, faceNormal);
 
-                // const ambientLightLevel = 0.33;
-                // if (dpLight < ambientLightLevel) dpLight = ambientLightLevel;
-
-                if (dpLight > 0){
-                    // red += color[0] * dpLight * lightSource.red;
-                    // green += color[1]* dpLight * lightSource.green;
-                    // blue += color[2] * dpLight * lightSource.blue;
-                    color = this.blendColors(color, lightSource, dpLight * 0.66);
-                }
+                if (dpLight > 0) color = this.blendColors(color, light, dpLight * 0.66);
             }
 
             //is current face facing the spotlight?
@@ -522,6 +528,7 @@ class Face extends GameObject {
 
             let strColor = this.toRGB(color);
             view.fillStyle = strColor;
+            //view.shadowColor = view.fillStyle;
             view.strokeStyle = strColor;
             this.drawFace(fp);
 
@@ -541,6 +548,7 @@ class Face extends GameObject {
         for(const p of fp) if (!p.xy) return;
         let col = this.toRGB(color);
         view.fillStyle = col;
+        //view.shadowColor = view.fillStyle;
         view.strokeStyle = col;
         this.drawFace(fp);
         //this.text(this.id, fp[1].xy);
@@ -683,7 +691,7 @@ class Sphere extends GameObject {
         this.faces.push(new Face((h-1)*v, (h-2)*v+1, (h-1)*v+1));
 }
     draw(camera) {
-        view.fillStyle = "white";
+        //view.fillStyle = "white";
         const points = [];
         let c = 0;
         for(const p of this.model) {
@@ -832,14 +840,10 @@ class PointLight extends GameObject {
     radius = 1000;
     angle = 0;
     color = [255, 255, 255];
-    constructor(x = 0, y = 0, z = 20) {
+    constructor(x = 0, y = 0, z = 20, d = 1) {
         super();
         this.position = { x, y, z };
-        // this.el = document.createElement("p");
-        // this.el.style.color = "#00ff00";
-        // this.el.style.display = "none";
-        // document.body.appendChild(this.el);
-        // console.log(this.color);
+        this.direction = d;
     }
     setColor(value) {
         this.el.style.color = value;
@@ -851,7 +855,7 @@ class PointLight extends GameObject {
     get blue() { return this.color[2] / 255; }
     draw(camera) {
         this.angle = 0.01;
-        Object.assign(this.position, this.rotate(this.position, {y:this.angle}, "y"));
+        Object.assign(this.position, this.rotate(this.position, {y:this.angle * this.direction}, "y"));
 
         const position = this.toXyPoint(this.toCameraPoint(this.position, camera));
         //const circ  = this.toXyPoint(this.toCameraPoint({x: this.position.x + this.radius, y: this.position.y, z: this.position.z }, camera));
@@ -996,27 +1000,36 @@ class Scene {
     animate = true;
     objects = [];
     lights = [];
+    constructor(plane = null) { this.plane = plane; }
     add(o) { this.objects.push(o); }
     addLight(l) { this.lights.push(l); this.add(l); }
-    draw(camera) { if (this.animate) { for(const o of this.objects) o.draw(camera); }
+    draw(camera) {
+         if (this.animate) {
+            view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+            if (this.plane) this.plane.draw(camera);
+            this.sort(camera);
+            for(const o of this.objects) o.draw(camera); 
+         }
     }
-    sort() { this.objects.sort((a, b) => b.distance(camera) - a.distance(camera))}
+    sort(camera) { this.objects.sort((a, b) => b.distance(camera) - a.distance(camera))}
     clear() { if (this.animate) view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height); }
 }
 
-const lightSource = new PointLight(0, 20, 50);
-lightSource.color = [255, 255, 0];
-const lightSource2 = new PointLight(0, 10, -50);
+const lightSource1 = new PointLight(0, 25, 20);
+lightSource1.color = [255, 255, 0];
+const lightSource2 = new PointLight(0, 5, -20, -1);
+lightSource2.color = [0, 0, 255];
 const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 5, -70);
 const cube = new Cube(0, 0, 50, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 3, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
 const pyramid = new Pyramid(0, -10, 5, 1, 1, 10);
-const wedge = new Wedge(10, 0, 20, 3, 1, 5);
+const wedge = new Wedge(10, 0, 0, 1, 1, 1);
 const sphere2 = new Sphere(20, 20, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
-const scene = new Scene();
+const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
+const scene = new Scene(plane);
 
 //#region DatGui
 const gui = new dat.GUI();
@@ -1073,16 +1086,12 @@ scene.add(pyramid);
 scene.add(wedge);
 scene.add(sphere2);
 //scene.add(sphere3);
-scene.addLight(lightSource);
+scene.addLight(lightSource1);
 scene.addLight(lightSource2);
 //scene.add(spotlight1);
 //for(let i = 0; i < 100; ++i) scene.add(new Cube());
 
-const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
-
 function animate() {
-    scene.sort();
-    scene.clear();
     //#region Game Input
     if (GameInput.isForward) camera.moveForward(0.3);
     if (GameInput.isBack) camera.moveBack(0.3);
@@ -1102,20 +1111,19 @@ function animate() {
     if (GameInput.isDown) camera.moveDown(1);
     if (GameInput.isReset) camera.reset();
     //#endregion
-    sphere.rotation.x += 0.01;
-    sphere.rotation.y += 0.01;
-    plane.draw(camera);
     scene.draw(camera);
-
-    const showCenter = false;
-        if (showCenter) {
+    if (gameSettings.showCrossHair) {
         view.beginPath();
         view.arc(0, 0, 10, 0, Math.PI * 2);
         view.stroke();
     }
-
     requestAnimationFrame(animate);
 }
-
-animate();
-
+requestAnimationFrame(animate);
+const c01 = document.createElement('canvas');
+console.log(c01.context);
+const c2 = c01.getContext("2d");
+console.log(c2);
+console.log(c01.context);
+c2.fillStyle = "red";
+console.log(c2.fillStyle);
