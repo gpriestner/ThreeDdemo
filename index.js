@@ -101,18 +101,21 @@ class GameObject {
         const r3 = this.rotate(r2, this.rotation, "z");
         return r3;
      }
-    toWorldPoint(p) {
-        const wp = { x: this.position.x + p.x * this.scale, 
-            y: this.position.y + p.y * this.scale, 
-            z: this.position.z + p.z * this.scale, };
-
+    toWorldPoint(p, camera) {
+        const wp = { 
+            x: this.position.x - camera.position.x + p.x * this.scale, 
+            y: this.position.y - camera.position.y + p.y * this.scale, 
+            z: this.position.z - camera.position.z + p.z * this.scale, 
+        };
         return wp;
     }
     toXyPoint(p) {
         const xyp = 
-          p.z > 0 ? 
-          {x: p.x / p.z * canvas.width, 
-          y: p.y / p.z * canvas.width } : null;
+          p.z != 0 ? 
+          {
+            x: p.x / p.z * canvas.width, 
+            y: p.y / p.z * canvas.width 
+        } : null;
         return xyp;
     }
     rotate(p, rotation, axis) {
@@ -154,11 +157,15 @@ class Cube extends GameObject {
         this.position = { x, y, z };
         this.rotation = { x: 0, y: 0, z: 0 };
     }
-    draw() {
+    draw(camera) {
+        this.rotation.x += 0.005;
+        this.rotation.y += 0.005;
+        this.rotation.z += 0.005;
+    
         const points = [], wPoints = [], xYpoints = [];
         for (let i = 0; i < this.model.length; ++i) {
             const lp = this.toLocalPoint(this.model[i])
-            const wp = this.toWorldPoint(lp);
+            const wp = this.toWorldPoint(lp, camera);
             wPoints.push(wp);
             const cp = this.toXyPoint(wp);
             xYpoints.push(cp);
@@ -190,16 +197,17 @@ class Cube extends GameObject {
         // view.stroke();
     }
 }
-
 class PointLight extends GameObject {
     color = [255, 255, 255];
     raduis = 400;
+    scale = 1;
     constructor(x, y, z) {
         super();
         this.position = { x, y, z };
     }
-    draw() {
-        const xy = this.toXyPoint(this.position);
+    draw(camera) {
+        const wp = this.toWorldPoint(this.position, camera);
+        const xy = this.toXyPoint(wp);
         const dist = Math.sqrt(this.position.x ** 2 + this.position.y **2 + this.position.z ** 2);
         const radius = this.raduis / dist;
         view.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
@@ -208,20 +216,29 @@ class PointLight extends GameObject {
         view.fill();
     }
 }
-
 class Scene {
     objects = [];
     add(o) { this.objects.push(o); }
-    draw() { for (const o of this.objects) o.draw(); }
+    draw(camera) { 
+        view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+        for (const o of this.objects) o.draw(camera); 
+    }
 }
-
+class Camera {
+    constructor(x, y, z) {
+        this.position = { x, y, z };
+    }
+}
 const cube = new Cube(0, 0, 20, 2);
+const cube2 = new Cube(5, 5, 20, 2);
 const light = new PointLight(5, 5, 20);
+const camera = new Camera(0, 0, 0);
 
 const scene = new Scene();
 scene.add(light);
 scene.add(cube);
-
+//scene.add(cube2);
+//#region DatGui
 const gui = new dat.GUI();
 gui.add(cube, "scale", 0.5, 10);
 gui.addColor(cube, "color");
@@ -238,16 +255,13 @@ lightFolder.addColor(light, "color");
 lightFolder.add(light.position, "x", -10, 10);
 lightFolder.add(light.position, "y", -10, 10);
 lightFolder.add(light.position, "z", 1, 50);
-
+const cameraFolder = gui.addFolder("Camera");
+cameraFolder.add(camera.position, "x", -20, 20);
+cameraFolder.add(camera.position, "y", -20, 20);
+cameraFolder.add(camera.position, "z", 10, 200);
+//#endregion
 function animate() {
-    view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
-
-    cube.rotation.x += 0.005;
-    cube.rotation.y += 0.005;
-    cube.rotation.z += 0.005;
-
-    scene.draw();
-
+    scene.draw(camera);
     requestAnimationFrame(animate);
 }
 
