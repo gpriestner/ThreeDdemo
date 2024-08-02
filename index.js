@@ -113,7 +113,7 @@ document.addEventListener("pointerlockchange", lockChange);
 canvas.addEventListener("click", async e => {
     if (e.button == 0) {
         if (!document.pointerLockElement) {
-        await canvas.requestPointerLock({
+            await canvas.requestPointerLock({
             unadjustedMovement: true,
         });
         } else {
@@ -149,7 +149,8 @@ function updatePosition(e) {
     if (camera.rotation.y < -Math.PI) camera.rotation.y += Math.PI * 2;
 }
 document.addEventListener("wheel", async e => {
-    camera.moveUp(-e.deltaY / 20);
+    if(e.deltaY) camera.moveUp(-e.deltaY / 20);
+    if(e.deltaX) camera.moveRight(e.deltaX / 100);
 });
 //#endregion
 //#region Utility Functions
@@ -341,18 +342,27 @@ class GameSettings {
 }
 const gameSettings = new GameSettings();
 class GameObject {
+    // #position = {};
+    // get position() {
+    //     if (this.parent) return this.parent.position;
+    //     return this.#position;
+    // }
+    // set position(o) {
+    //     if (!this.parent) Object.assign(this.#position, o);
+    // }
     rotation = { x: 0, y: 0, z: 0 };
     constructor(x = 0, y = 0, z = 0, s = 1) {
         this.position = { x, y, z };
         this.scale = s;
     }
-    moveTo(p, o = 0) { if(p) view.moveTo(p.x + o, p.y + o); }
-    lineTo(p, o = 0) { if(p) view.lineTo(p.x + o, p.y + o); }
     draw(camera) {
+        if (this.auto?.x) this.rotation.x += this.auto.x;
+        if (this.auto?.y) this.rotation.y += this.auto.y;
+        if (this.auto?.z) this.rotation.z += this.auto.z;
         const points = [];
         for(const p of this.model) {
-            //const lp = this.toLocalPoint(p);
-            const wp = this.toWorldPoint(p); // lp
+            const lp = this.toLocalPoint(p);
+            const wp = this.toWorldPoint(lp); // lp
             const cp = this.toCameraPoint(wp, camera);
             const xy = this.toXyPoint(cp);
             points.push({ wp, cp, xy, id: p.id });
@@ -361,7 +371,7 @@ class GameObject {
     }
     toLocalPoint(p) {
         let r = p;
-        for (const a of 'xyz') if (this.rotation[a]) r = this.rotate(r, this.rotation, a); 
+        for (const a of 'yxz') if (this.rotation[a]) r = this.rotate(r, this.rotation, a); 
         return r;
     }
     toWorldPoint(p) {
@@ -403,11 +413,34 @@ class GameObject {
         return rotatePointAroundUnitVector(p, v, a);
     }
     distance(camera) {
-        const dx = (this.position.x - camera.position.x) ** 2;
-        const dy = (this.position.y - camera.position.y) ** 2;
-        const dz = (this.position.z - camera.position.z) ** 2;
+        let dx, dy, dz;
+        if (this.parent) {
+            const lp = this.toLocalPoint(this.parentOffset);
+            const wp = this.toWorldPoint(lp);
+            dx = (wp.x - camera.position.x) ** 2;
+            dy = (wp.y - camera.position.y) ** 2;
+            dz = (wp.z - camera.position.z) ** 2;
+        } else {
+            dx = (this.position.x - camera.position.x) ** 2;
+            dy = (this.position.y - camera.position.y) ** 2;
+            dz = (this.position.z - camera.position.z) ** 2;
+        }
         return Math.sqrt(dx + dy + dz);
     }
+    connect(o) {
+        if (!this.children) this.children = [];
+        this.children.push(o);
+        o.setParent(this);
+    }
+    setParent(parent) {
+        this.parentOffset = subtractVector(parent.position, this.position);
+        this.parent = parent;
+        this.position = parent.position;
+        this.rotation = parent.rotation;
+        for(let i = 0; i < this.model.length; ++i) this.model[i] = addVector(this.model[i], this.parentOffset);
+    }
+    moveTo(p, o = 0) { if(p) view.moveTo(p.x + o, p.y + o); }
+    lineTo(p, o = 0) { if(p) view.lineTo(p.x + o, p.y + o); }
 }
 class MultiFace extends GameObject {
     model = [ new Pt(-1, 1, 0), new Pt(1, 1, 0), new Pt(1, -1, 0), new Pt(-1, 1, 0)];
@@ -430,14 +463,22 @@ class Plane extends GameObject {
         this.model = [];
         for (let x = 0; x <= divs; ++x) {
             for (let z = 0; z <= divs; ++z) {
-                this.model.push({x: x * step + start, y: y, z: z * step + start});
+                this.model.push({x: x * step + start, y, z: z * step + start});
             }
         }
         this.faces = [];
         for (let x = 0; x < divs; ++x) {
             for (let z = 0; z < divs; ++z) {
                 const i = z * (divs + 1) + x;
-                const face = new Face(i, i + divs + 1, i + divs + 2, i + 1);
+
+                const i2 = i + divs + 1;
+                const i3 = i + divs + 2;
+                const i4 = i + 1;
+
+                //const face = new Face(i, i + divs + 1, i + divs + 2, i + 1);
+
+                const face = new Face([i, i4,  i3, i2]);
+
                 face.color = x%2^z%2 ? colorA : colorB;
                 this.faces.push(face);
             }
@@ -452,21 +493,28 @@ class Plane extends GameObject {
             points.push({ wp, cp, xy });
         }
         for(const f of this.faces) f.fill(points, f.color, camera);
+        //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
     }
 }
 class Face extends GameObject {
     static count = 0;
     static sides = ["Front", "Back", "Top", "Bottom", "Left", "Right"];
     verts = [];
-    constructor() {
+    constructor(indexes) {
         super();
         this.id = Face.count++;
-        for(const a of arguments) this.verts.push(a);
+        for(const a of indexes) this.verts.push(a);
     }
     getFacePoints(points) {
         const localPoints = [];
         for (const i of this.verts) localPoints.push(points[i]);
         return localPoints;
+    }
+    center(points) {
+        let x = 0, y = 0, z = 0;
+        for(const p of points) if (p) { x += p.wp.x; y += p.wp.y; z += p.wp.z }
+        const c = { x: x / points.length, y: y / points.length, z: z / points.length };
+        return c;
     }
     draw(parentPosition, points, color, camera) {
         const fp = this.getFacePoints(points);
@@ -477,6 +525,7 @@ class Face extends GameObject {
         
         // calculate if face is visible
         const faceNormal = crossProduct(faceEdge1, faceEdge2);
+        //const cent = this.center(fp);
         const cameraVector = normaliseVector(subtractVector(fp[0].wp, camera.position));
         const visible = dotProduct(cameraVector, faceNormal) > 0;
 
@@ -641,16 +690,16 @@ class Sphere extends GameObject {
 
         // LAYER 0 (TOP): populate (v) faces around north pole (3 verts)
         for (let i = 2; i <= v; ++i) {
-              this.faces.push(new Face(0, i, i - 1));
+              this.faces.push(new Face([0, i, i - 1]));
         }
-        this.faces.push(new Face(0, 1, v));
+        this.faces.push(new Face([0, 1, v]));
 
         // Populate middle layers (each face has 4 verts)
         for (let j = 0; j < h-2; ++j) {
             for (let i = v*j+1; i < v*(j+1); ++i) {
-                this.faces.push(new Face(i, i+1, i+v+1, i+v));
+                this.faces.push(new Face([i, i+1, i+v+1, i+v]));
             }
-            this.faces.push(new Face(v*(j+1), v*j+1, v*(j+1)+1, v*(j+2)));
+            this.faces.push(new Face([v*(j+1), v*j+1, v*(j+1)+1, v*(j+2)]));
         }
 /*
         // LAYER 1
@@ -686,9 +735,9 @@ class Sphere extends GameObject {
 */
         // LAST LAYER (BOTTOM): populate (v) faces around south pole (3 verts)
         for (let i = (h-2)*v+1; i < (h-2)*v+1 + v; ++i) {
-            this.faces.push(new Face(i, i+1, (h-1)*v+1));
+            this.faces.push(new Face([i, i+1, (h-1)*v+1]));
         }
-        this.faces.push(new Face((h-1)*v, (h-2)*v+1, (h-1)*v+1));
+        this.faces.push(new Face([(h-1)*v, (h-2)*v+1, (h-1)*v+1]));
 }
     draw(camera) {
         //view.fillStyle = "white";
@@ -740,17 +789,17 @@ class Cylinder extends GameObject {
 
         this.faces = [];
         // populate top faces (triangles)
-        for (let i = 2; i <= s; ++i) this.faces.push(new Face(0, i, i - 1));
-        this.faces.push(new Face(0, 1, s));
+        for (let i = 2; i <= s; ++i) this.faces.push(new Face([0, i, i - 1]));
+        this.faces.push(new Face([0, 1, s]));
 
         // populate bottom faces (triangles)
         const spi = s * 2 + 1; // south pole index
-        for (let i = s + 1; i <= s * 2 - 1; ++i) this.faces.push(new Face(spi, i, i + 1));
-        this.faces.push(new Face(spi, spi - 1,  s + 1));
+        for (let i = s + 1; i <= s * 2 - 1; ++i) this.faces.push(new Face([spi, i, i + 1]));
+        this.faces.push(new Face([spi, spi - 1,  s + 1]));
 
         // populate side faces (squares)
-        for (let i = 1; i < s; ++ i) this.faces.push(new Face(i, i + 1, i + s + 1, i + s));
-        this.faces.push(new Face(s, 1, s + 1, s * 2));
+        for (let i = 1; i < s; ++ i) this.faces.push(new Face([i, i + 1, i + s + 1, i + s]));
+        this.faces.push(new Face([s, 1, s + 1, s * 2]));
     }
     draw(camera) {
         const points = [];
@@ -781,12 +830,12 @@ class Cube extends GameObject {
         new Pt(1, -1, 1),   // 6 bottom-right back
         new Pt(-1, -1, 1)   // 7 bottom-left back
     ]
-    faces = [ new Face(0,1,2,3), // front
-              new Face(5,4,7,6), // back
-              new Face(4,5,1,0), // top
-              new Face(3,2,6,7), // bottom
-              new Face(4,0,3,7), // left
-              new Face(1,5,6,2)  // right
+    faces = [ new Face([0,1,2,3]), // front
+              new Face([5,4,7,6]), // back
+              new Face([4,5,1,0]), // top
+              new Face([3,2,6,7]), // bottom
+              new Face([4,0,3,7]), // left
+              new Face([1,5,6,2])  // right
             ]
     constructor(x, y, z, sx = 1, sy = sx, sz = sy) {
         super();
@@ -798,30 +847,28 @@ class Cube extends GameObject {
         this.rotation = { x: 0, y: 0, z: 0 };
         const maxRotate = 0.05;
         const maxOffset = maxRotate / 2;
-        this.auto = { /*x: Math.random() * maxRotate - maxOffset,*/ y: Math.random() * maxRotate - maxOffset/*, z: Math.random() * maxRotate - maxOffset*/ };
+        //this.auto = { /*x: Math.random() * maxRotate - maxOffset,*/ y: Math.random() * maxRotate - maxOffset/*, z: Math.random() * maxRotate - maxOffset*/ };
+        this.auto = { x: 0, y: 0.01, z: 0 };
     }
-    draw(camera) {
-        if (this.auto?.x) this.rotation.x += this.auto.x;
-        if (this.auto?.y) this.rotation.y += this.auto.y;
-        if (this.auto?.z) this.rotation.z += this.auto.z;
-        const points = [];
-        for (let i = 0; i < this.model.length; ++i) {
-            const lp = this.toLocalPoint(this.model[i]);
-            const wp = this.toWorldPoint(lp);
-            const cp = this.toCameraPoint(wp, camera);
-            const xy = this.toXyPoint(cp);
-            // worldPoints.push(wp);
-            // cameraPoints.push(cp);
-            // xyPoints.push(xy);
-            points.push({ wp, cp, xy });
-        }
-        for(const f of this.faces) f.draw(this.position, points, this.color, camera);
-    }
+    // draw(camera) {
+    //     if (this.auto?.x) this.rotation.x += this.auto.x;
+    //     if (this.auto?.y) this.rotation.y += this.auto.y;
+    //     if (this.auto?.z) this.rotation.z += this.auto.z;
+    //     const points = [];
+    //     for (let i = 0; i < this.model.length; ++i) {
+    //         const lp = this.toLocalPoint(this.model[i]);
+    //         const wp = this.toWorldPoint(lp);
+    //         const cp = this.toCameraPoint(wp, camera);
+    //         const xy = this.toXyPoint(cp);
+    //         points.push({ wp, cp, xy });
+    //     }
+    //     for(const f of this.faces) f.draw(this.position, points, this.color, camera);
+    // }
 }
 class Pyramid extends GameObject {
     color = rndColor();
     model = [ new Pt(0, 1, 0), new Pt(1, 0, 1), new Pt(1, 0, -1), new Pt(-1, 0, -1), new Pt(-1, 0, 1) ];
-    faces = [new Face(0, 1, 2), new Face(0, 2, 3), new Face(0, 3, 4), new Face(0, 4, 1), new Face(4, 3, 2, 1)];
+    faces = [new Face([0, 1, 2]), new Face([0, 2, 3]), new Face([0, 3, 4]), new Face([0, 4, 1]), new Face([4, 3, 2, 1])];
     constructor(x, y, z, s = 1, sx = 1, sy = 1, sz = 1) {
         super(x, y, z, s);
         for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
@@ -830,7 +877,7 @@ class Pyramid extends GameObject {
 class Wedge extends GameObject {
     color = rndColor();
     model = [new Pt(-1, 0, -1), new Pt(1, 0, -1), new Pt(1, 0, 1), new Pt(-1, 0, 1), new Pt(-1, 1, 1), new Pt(-1, 1, -1)];
-    faces = [new Face(0,1,2,3), new Face(0,3,4,5), new Face(1,5,4,2), new Face(0,5,1), new Face(3,2,4)];
+    faces = [new Face([0,1,2,3]), new Face([0,3,4,5]), new Face([1,5,4,2]), new Face([0,5,1]), new Face([3,2,4])];
     constructor(x, y, z, s = 1, sx = 1, sy = 1, sz = 1) {
         super(x, y, z, s);
         for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
@@ -918,9 +965,9 @@ class SpotLight extends GameObject {
     }
 }
 class Camera {
-    model = { x: 0, y: 0, z: 1 };
-    rightModel = { x: 1, y: 0, z: 0 };
-    upModel = { x: 0, y: 1, z: 0 };
+    forwardVector = { x: 0, y: 0, z: 1 };
+    rightVector = { x: 1, y: 0, z: 0 };
+    upVector = { x: 0, y: 1, z: 0 };
     rotation = { x: 0, y: 0 };
     zoom = 1;
     max = 500;
@@ -929,17 +976,20 @@ class Camera {
     constructor(x = 0, y = 0, z = 0) {
         this.position = { x, y, z };
     }
+    get heading() { return { x: -Math.sin(-this.rotation.y), y: 0, z: Math.cos(-this.rotation.y) }; }
+    get pitchVector() { return { x: Math.cos(-this.rotation.y), y: 0, z: Math.sin(-this.rotation.y) }; }
     get direction() {
-        const forwardPoint = this.rotate(this.model, this.rotation, "y");
-        const rotationVector = this.rotate(this.rightModel, this.rotation, "y");
-        const rotationPoint = rotatePointAroundUnitVector(forwardPoint, rotationVector, -this.rotation.x);
-        return rotationPoint;
+        //const heading = this.rotate(this.forwardVector, this.rotation, "y");
+        //const pitchVector = this.rotate(this.rightVector, this.rotation, "y");
+        //const direction = rotatePointAroundUnitVector(this.heading, pitchVector, -this.rotation.x);
+        const direction = rotatePointAroundUnitVector(this.heading, this.pitchVector, -this.rotation.x);
+        return direction;
         // const ry = this.rotate(this.model, this.rotation, "y");
         // const rx = this.rotate(ry, this.rotation, "x");
         // return rx;
     }
     get rightDirection() {
-        const rightPoint = this.rotate(this.rightModel, this.rotation, "y");
+        const rightPoint = this.rotate(this.rightVector, this.rotation, "y");
         return rightPoint;
     }
     moveForward(dist) {
@@ -1014,36 +1064,36 @@ class Scene {
     sort(camera) { this.objects.sort((a, b) => b.distance(camera) - a.distance(camera))}
     clear() { if (this.animate) view.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height); }
 }
-
+//#region Define objects
 const lightSource1 = new PointLight(0, 25, 20);
 lightSource1.color = [255, 255, 0];
 const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
-const spotlight1 = new SpotLight(0, 0, 10);
+//const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 5, -70);
-const cube = new Cube(0, 0, 50, 1, 10, 0.1);
+const cube = new Cube(0, 0, 0, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 3, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
 const pyramid = new Pyramid(0, -10, 5, 1, 1, 10);
-const wedge = new Wedge(10, 0, 0, 1, 1, 1);
+const wedge = new Wedge(2, 0, 0, 1, 1, 1);
 const sphere2 = new Sphere(20, 20, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
+//#endregion
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
 const scene = new Scene(plane);
-
 //#region DatGui
 const gui = new dat.GUI();
 
-// const cubeFolder = gui.addFolder("Cube");
-// cubeFolder.add(cube, "scale", 1, 25).name("Scale");
-// const cubePosition = cubeFolder.addFolder("Position");
-// cubePosition.add(cube.position, "x", -20, 20);
-// cubePosition.add(cube.position, "y", -20, 20);
-// cubePosition.add(cube.position, "z", 10, 200);
-// const cubeRotation = cubeFolder.addFolder("Rotation");
-// cubeRotation.add(cube.rotation, "x", -Math.PI, Math.PI);
-// cubeRotation.add(cube.rotation, "y", -Math.PI, Math.PI);
-// cubeRotation.add(cube.rotation, "z", -Math.PI, Math.PI);
+const cubeFolder = gui.addFolder("Cube");
+cubeFolder.add(cube, "scale", 1, 25).name("Scale");
+const cubePosition = cubeFolder.addFolder("Position");
+cubePosition.add(cube.position, "x", -20, 20);
+cubePosition.add(cube.position, "y", -20, 20);
+cubePosition.add(cube.position, "z", 10, 200);
+const cubeRotation = cubeFolder.addFolder("Rotation");
+cubeRotation.add(cube.rotation, "x", -Math.PI, Math.PI);
+cubeRotation.add(cube.rotation, "y", -Math.PI, Math.PI);
+cubeRotation.add(cube.rotation, "z", -Math.PI, Math.PI);
 
 const sphereFolder = gui.addFolder("Sphere");
 sphereFolder.add(sphere, "scale", 1, 25).name("Scale");
@@ -1057,13 +1107,13 @@ sphereRotation.add(sphere.rotation, "x", -Math.PI, Math.PI);
 sphereRotation.add(sphere.rotation, "y", -Math.PI, Math.PI);
 sphereRotation.add(sphere.rotation, "z", -Math.PI, Math.PI);
 
-const light = gui.addFolder("Light Source");
-light.add(spotlight1.position, "x", -40, 40);
-light.add(spotlight1.position, "y", -40, 40);
-light.add(spotlight1.position, "z", -100, 250);
-light.addColor(spotlight1, "colorA").name("Colour");
-light.add(spotlight1, "dpVariance", 0, 0.1);
-light.add(spotlight1, "strength", 0, 10);
+// const light = gui.addFolder("Light Source");
+// light.add(spotlight1.position, "x", -40, 40);
+// light.add(spotlight1.position, "y", -40, 40);
+// light.add(spotlight1.position, "z", -100, 250);
+// light.addColor(spotlight1, "colorA").name("Colour");
+// light.add(spotlight1, "dpVariance", 0, 0.1);
+// light.add(spotlight1, "strength", 0, 10);
 const cam = gui.addFolder("Camera");
 cam.add(camera, "max", 0, 1000);
 cam.add(camera, "min", 0, 25);
@@ -1078,7 +1128,7 @@ camPosition.add(camera.position, "z", -100, 100).listen();
 gui.add(scene, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
 //#endregion
-
+//#region Setup scene
 scene.add(cube);
 scene.add(sphere);
 scene.add(cylinder);
@@ -1089,8 +1139,14 @@ scene.add(sphere2);
 scene.addLight(lightSource1);
 scene.addLight(lightSource2);
 //scene.add(spotlight1);
-//for(let i = 0; i < 100; ++i) scene.add(new Cube());
 
+
+//for(let i = 0; i < 100; ++i) scene.add(new Cube());
+//#endregion
+//#region Connect objects
+cube.connect(wedge);
+//#endregion
+//#region Animate
 function animate() {
     //#region Game Input
     if (GameInput.isForward) camera.moveForward(0.3);
@@ -1120,10 +1176,4 @@ function animate() {
     requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
-const c01 = document.createElement('canvas');
-console.log(c01.context);
-const c2 = c01.getContext("2d");
-console.log(c2);
-console.log(c01.context);
-c2.fillStyle = "red";
-console.log(c2.fillStyle);
+//#endregion
