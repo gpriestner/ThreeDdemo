@@ -351,9 +351,10 @@ class GameObject {
     //     if (!this.parent) Object.assign(this.#position, o);
     // }
     rotation = { x: 0, y: 0, z: 0 };
-    constructor(x = 0, y = 0, z = 0, s = 1) {
+    constructor(x = 0, y = 0, z = 0, s = 1, sx = 1, sy = 1, sz = 1) {
         this.position = { x, y, z };
         this.scale = s;
+        if(this.model) for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
     }
     draw(camera) {
         if (this.auto?.x) this.rotation.x += this.auto.x;
@@ -500,8 +501,9 @@ class Face extends GameObject {
     static count = 0;
     static sides = ["Front", "Back", "Top", "Bottom", "Left", "Right"];
     verts = [];
-    constructor(indexes) {
+    constructor(indexes, doubleSided = false) {
         super();
+        this.doubleSided = doubleSided;
         this.id = Face.count++;
         for(const a of indexes) this.verts.push(a);
     }
@@ -522,12 +524,17 @@ class Face extends GameObject {
         // calculate 2 face vectors to describe the plane of the face
         const faceEdge1 = subtractVector(fp[1].wp, fp[0].wp);
         const faceEdge2 = subtractVector(fp[2].wp, fp[0].wp);
-        
+
         // calculate if face is visible
-        const faceNormal = crossProduct(faceEdge1, faceEdge2);
+        let faceNormal = crossProduct(faceEdge1, faceEdge2);
         //const cent = this.center(fp);
         const cameraVector = normaliseVector(subtractVector(fp[0].wp, camera.position));
-        const visible = dotProduct(cameraVector, faceNormal) > 0;
+        let visible = dotProduct(cameraVector, faceNormal) > 0;
+
+        if(!visible && this.doubleSided) {
+            visible = true;
+            faceNormal = reverseVector(faceNormal);
+        }
 
         if (visible) {
             //for (const p of fp) p.normal = normaliseVector(subtractVector(parentPosition, p.wp));
@@ -577,10 +584,10 @@ class Face extends GameObject {
 
             let strColor = this.toRGB(color);
             view.fillStyle = strColor;
-            //view.shadowColor = view.fillStyle;
+            view.shadowColor = view.fillStyle;
             view.strokeStyle = strColor;
             this.drawFace(fp);
-
+            view.shadowColor = 'rgba(0,0,0,0)';
             for (const p of fp) if (p.id && p.xy) this.text(p.id, p.xy);
 
             //drawSkew(testImage, xy[0], xy[1], xy[2], xy[3]);
@@ -879,9 +886,14 @@ class Wedge extends GameObject {
     model = [new Pt(-1, 0, -1), new Pt(1, 0, -1), new Pt(1, 0, 1), new Pt(-1, 0, 1), new Pt(-1, 1, 1), new Pt(-1, 1, -1)];
     faces = [new Face([0,1,2,3]), new Face([0,3,4,5]), new Face([1,5,4,2]), new Face([0,5,1]), new Face([3,2,4])];
     constructor(x, y, z, s = 1, sx = 1, sy = 1, sz = 1) {
-        super(x, y, z, s);
-        for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
+        super(x, y, z, s, sx, sy, sz);
+        //for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
     }
+}
+class Triangle extends GameObject {
+    model = [ new Pt(-1,-1,0), new Pt(1,-1,0), new Pt(1,1,0) ];
+    faces = [ new Face([0,1,2], true) ];
+    color = [255,255,0];
 }
 class PointLight extends GameObject {
     radius = 1000;
@@ -1072,12 +1084,13 @@ lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 5, -70);
 const cube = new Cube(0, 0, 0, 1, 10, 0.1);
-const sphere = new Sphere(0, 0, 40, 3, 32, 4, 0.5);
+const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
-const pyramid = new Pyramid(0, -10, 5, 1, 1, 10);
+const pyramid = new Pyramid(0, -10, -50, 1, 1, 10);
 const wedge = new Wedge(2, 0, 0, 1, 1, 1);
 const sphere2 = new Sphere(20, 20, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
+const tri1 = new Triangle(0, 0, -50);
 //#endregion
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
 const scene = new Scene(plane);
@@ -1138,6 +1151,7 @@ scene.add(sphere2);
 //scene.add(sphere3);
 scene.addLight(lightSource1);
 scene.addLight(lightSource2);
+scene.add(tri1);
 //scene.add(spotlight1);
 
 
