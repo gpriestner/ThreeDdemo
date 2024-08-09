@@ -101,6 +101,7 @@ function resize() {
 
     view.lineWidth = 1;
     view.strokeStyle = "black";
+    view.lineWidth = 4;
     view.lineJoin = "bevel";
     view.shadowOffsetX = 1;
     view.shadowOffsetY = 1;
@@ -178,6 +179,9 @@ function addVector(v1, v2) {
 function subtractVector(v1, v2) { // vector is v1 -> v2
     return { x: v2.x - v1.x, y: v2.y - v1.y, z: v2.z - v1.z };
 }
+function subtractVector2d(v1, v2) { // v1 -> v2
+    return { x: v2.x - v1.x, y: v2.y - v1.y };
+}
 function centroid(verts) {
     let x = 0, y = 0, z = 0;
     for(const a of verts) { x += a.x; y += a.y; z += a.z; }
@@ -227,7 +231,7 @@ function drawTransform(image, m, p1, p2, p3) {
 function moveTo(p, o = 0) { if(p) view.moveTo(p.x + o, p.y + o); }
 function lineTo(p, o = 0) { if(p) view.lineTo(p.x + o, p.y + o); }
 function addColorPoint(p, center, face) {
-    const d = dist(p.xy, center);
+    const d = dist2d(p.xy, center);
     const grad = view.createRadialGradient(p.xy.x, p.xy.y, 0, p.xy.x, p.xy.y, d);
     grad.addColorStop(0, `rgba(${p.color[0]},${p.color[1]},${p.color[2]},1)`);
     grad.addColorStop(1, `rgba(${p.color[0]},${p.color[1]},${p.color[2]},0)`);
@@ -248,7 +252,7 @@ function fillRect(face) {
     for(const p of face) lineTo(p.xy, 1);    
     view.fill();
 }
-function dist(p1, p2, factor = 1.5) {
+function dist2d(p1, p2, factor = 1.5) {
     return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2) * factor;
 }
 function dist3d(p1, p2) {
@@ -328,6 +332,9 @@ function colorToArray(color) {
     view.fillStyle = oldStyle;
     return [parseInt("0x"+c[1]+c[2]), parseInt("0x"+c[3]+c[4]), parseInt("0x"+c[5]+c[6])];
 }
+function arrayToColor(a) {
+    return `rgb(${a[0]},${a[1]},${a[2]})`;
+}
 //#endregion
 class Pt {
     constructor(x = 0, y = 0, z = 0) {
@@ -338,7 +345,8 @@ class Pt {
 }
 class GameSettings {
     doubleDraw = false;
-    showCrossHair = false;
+    showCrossHair = true;
+    selectFace = true;
 }
 const gameSettings = new GameSettings();
 class GameObject {
@@ -354,7 +362,7 @@ class GameObject {
     constructor(x = 0, y = 0, z = 0, s = 1, sx = 1, sy = 1, sz = 1) {
         this.position = { x, y, z };
         this.scale = s;
-        if(this.model) for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
+        if(this.model) for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz; p.parent = this; }
     }
     draw(camera) {
         if (this.auto?.x) this.rotation.x += this.auto.x;
@@ -442,6 +450,7 @@ class GameObject {
     }
     moveTo(p, o = 0) { if(p) view.moveTo(p.x + o, p.y + o); }
     lineTo(p, o = 0) { if(p) view.lineTo(p.x + o, p.y + o); }
+    dot(p) { if(p) view.fillRect(p.x-2, p.y-2, 4, 4); }
 }
 class MultiFace extends GameObject {
     model = [ new Pt(-1, 1, 0), new Pt(1, 1, 0), new Pt(1, -1, 0), new Pt(-1, 1, 0)];
@@ -470,16 +479,13 @@ class Plane extends GameObject {
         this.faces = [];
         for (let x = 0; x < divs; ++x) {
             for (let z = 0; z < divs; ++z) {
-                const i = z * (divs + 1) + x;
 
-                const i2 = i + divs + 1;
-                const i3 = i + divs + 2;
-                const i4 = i + 1;
+                const i1 = z * (divs + 1) + x;
+                const i2 = i1 + 1;
+                const i3 = i1 + divs + 2;
+                const i4 = i3 - 1; //  i1 + divs + 1;
 
-                //const face = new Face(i, i + divs + 1, i + divs + 2, i + 1);
-
-                const face = new Face([i, i4,  i3, i2]);
-
+                const face = new Face([i1, i2,  i3, i4]);
                 face.color = x%2^z%2 ? colorA : colorB;
                 this.faces.push(face);
             }
@@ -648,6 +654,13 @@ class Face extends GameObject {
         //view.stroke();
         if (gameSettings.doubleDraw) this.drawLines(points, 1);
         view.fill();
+
+        if (gameSettings.selectFace && view.isPointInPath(canvas.width / 2, canvas.height / 2)) {
+            const oldStroke = view.strokeStyle;
+            view.strokeStyle = "red";
+            view.stroke();
+            view.strokeStyle = oldStroke;
+        }
     }
     drawLines(points, o = 0) {
         this.moveTo(points[points.length - 1].xy, o);
@@ -673,7 +686,7 @@ class Sphere extends GameObject {
         super();
         this.position = { x, y, z };
         this.rotation = { x: 0, y: 0, z: 0};
-        this.scale = 4;
+        this.scale = 1;
         this.dotSize = 2;
         const np = this.model[0];
         const sp = reverseVector(np);
@@ -695,7 +708,7 @@ class Sphere extends GameObject {
 
         this.faces = [];
 
-        // LAYER 0 (TOP): populate (v) faces around north pole (3 verts)
+        // LAYER 0 (TOP): populate (v) faces around north pole (3 verts each)
         for (let i = 2; i <= v; ++i) {
               this.faces.push(new Face([0, i, i - 1]));
         }
@@ -744,7 +757,7 @@ class Sphere extends GameObject {
         for (let i = (h-2)*v+1; i < (h-2)*v+1 + v; ++i) {
             this.faces.push(new Face([i, i+1, (h-1)*v+1]));
         }
-        this.faces.push(new Face([(h-1)*v, (h-2)*v+1, (h-1)*v+1]));
+        this.faces.push(new Face([(h-1)*v, (h-2)*v+1, (h-1)*v+1])); // south pole point
 }
     draw(camera) {
         //view.fillStyle = "white";
@@ -764,6 +777,67 @@ class Sphere extends GameObject {
     text(t, p) {
         view.font = "18px Arial";
         view.fillText(t, p.x, p.y);
+    }
+}
+class SimpleSphere extends GameObject {
+    radius = 2000;
+    radius2 = 3;
+    color = [255, 0, 0];
+    factor = 1.5;
+    model = [new Pt(-1, 0, 0)]; // north pole
+    draw(camera) {
+        const wp = this.toWorldPoint(this.model[0]);
+        const light = scene.lights[0];
+
+        const lightVector = normaliseVector(subtractVector(this.position, light.position));
+        const cameraVector = normaliseVector(subtractVector(this.position, camera.position));
+        const wpVector = normaliseVector(subtractVector(wp, camera.position));
+        const midVector = normaliseVector(addVector(lightVector, cameraVector));
+
+        const cross = crossProduct(wpVector, cameraVector);
+        const lengthCross = length(cross);
+
+        const cameraRelativeNorthPole = addVector(multiplyVector(cross, this.radius2), this.position);
+
+        const xyCross = this.toXyPoint(this.toCameraPoint(cross, camera));
+        const xyCross2 = this.toXyPoint(this.toCameraPoint(cameraRelativeNorthPole, camera));
+
+        // calculate angle between vectors. PI = spec reflection on circle's edge
+        // 0.5 PI (90 degs) = spec reflection halfway between center of circle and edge
+        // 0 (light is behind/near camera) = spec ref in centre of circle
+
+        // const dp = dotProduct(lightVector, cameraVector);
+        // const angle = Math.acos(dp / length(lightVector) * length(cameraVector));
+        // // if (angle > Math.PI) angle -= (angle - Math.PI);
+        // const ratio =  angle / Math.PI; // 1 = edge, 0 = centre
+
+        //const xyLight = this.toXyPoint(this.toCameraPoint(camera.position, camera));
+
+        const xyPosition = this.toXyPoint(this.toCameraPoint(this.position, camera));
+        if (xyPosition) {
+            const distance = dist3d(this.position, camera.position);
+            const radius = this.radius / distance;
+            if (radius > 1) {
+                view.fillStyle = arrayToColor(this.color);
+                view.beginPath();
+                view.arc(xyPosition.x, xyPosition.y, radius, 0, Math.PI * 2);
+                view.fill();
+
+                const mv = multiplyVector(midVector, this.factor);
+                const av = addVector(this.position, mv);
+                const cp = this.toCameraPoint(av, camera);
+                const spot = this.toXyPoint(cp);
+                view.fillStyle = arrayToColor(light.color);
+                this.dot(spot);
+
+                view.fillStyle = "lime";
+                this.dot(xyCross);
+
+                view.fillStyle = "aqua";
+                this.dot(xyCross2);
+        
+            }
+        }
     }
 }
 class Cylinder extends GameObject {
@@ -1083,14 +1157,15 @@ const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 5, -70);
-const cube = new Cube(0, 0, 0, 1, 10, 0.1);
+const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
 const pyramid = new Pyramid(0, -10, -50, 1, 1, 10);
-const wedge = new Wedge(2, 0, 0, 1, 1, 1);
+const wedge = new Wedge(-3, 0, 0, 1, 1, 1);
 const sphere2 = new Sphere(20, 20, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
 const tri1 = new Triangle(0, 0, -50);
+const simple = new SimpleSphere(15, 0, 10);
 //#endregion
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
 const scene = new Scene(plane);
@@ -1140,6 +1215,7 @@ camPosition.add(camera.position, "y", -100, 100).listen();
 camPosition.add(camera.position, "z", -100, 100).listen();
 gui.add(scene, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
+gui.add(simple, "radius2", 0, 5);
 //#endregion
 //#region Setup scene
 scene.add(cube);
@@ -1152,6 +1228,7 @@ scene.add(sphere2);
 scene.addLight(lightSource1);
 scene.addLight(lightSource2);
 scene.add(tri1);
+scene.add(simple);
 //scene.add(spotlight1);
 
 
@@ -1183,9 +1260,19 @@ function animate() {
     //#endregion
     scene.draw(camera);
     if (gameSettings.showCrossHair) {
+        const oldStroke = view.strokeStyle;
+        const oldLineWidth = view.lineWidth;
+        view.lineWidth = 2;
         view.beginPath();
-        view.arc(0, 0, 10, 0, Math.PI * 2);
+        view.strokeStyle = "white";
+        view.arc(0, 0, 18, 0, Math.PI * 2);
         view.stroke();
+        view.strokeStyle = "black";
+        view.beginPath();
+        view.arc(0, 0, 20, 0, Math.PI * 2);
+        view.stroke();
+        view.lineWidth = oldLineWidth;
+        view.strokeStyle = oldStroke;
     }
     requestAnimationFrame(animate);
 }
