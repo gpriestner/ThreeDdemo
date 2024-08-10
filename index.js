@@ -53,20 +53,23 @@ class Keyboard {
 class Mouse {
     static RightDown = false;
     static MiddleDown = false;
+    static LeftDown = false;
     static #Mouse = (() => {
         canvas.addEventListener("mousedown", e => { 
+            if (e.button == 0) Mouse.LeftDown = true;
+            if (e.button == 1) togglePointerLock();
             if (e.button == 2) Mouse.RightDown = true;
-            if (e.button == 1) Mouse.MiddleDown = true;
             });
         canvas.addEventListener("mouseup", e => { 
-            if(e.button == 2) Mouse.RightDown = false; 
+            if(e.button == 0) Mouse.LeftDown = false; 
             if(e.button == 1) Mouse.MiddleDown = false; 
+            if(e.button == 2) Mouse.RightDown = false; 
         });
     })();
 }
 class GameInput {
     static get isForward() {
-        return Keyboard.isDown("KeyW") || Mouse.RightDown;
+        return Keyboard.isDown("KeyW") || Mouse.LeftDown;
     }
     static get isLeft() {
         return Keyboard.isDown("KeyA");
@@ -81,7 +84,7 @@ class GameInput {
     return Keyboard.isDown("ArrowRight");
     }
     static get isBack() {
-    return Keyboard.isDown("KeyS") || Mouse.MiddleDown;
+    return Keyboard.isDown("KeyS") || Mouse.RightDown;
     }
     static get isUp() {
         return Keyboard.isDown("ArrowUp");
@@ -110,20 +113,32 @@ resize();
 addEventListener("resize", resize);
 //#endregion
 //#region Pointer Lock
-document.addEventListener("pointerlockchange", lockChange);
-canvas.addEventListener("click", async e => {
-    if (e.button == 0) {
-        if (!document.pointerLockElement) {
-            await canvas.requestPointerLock({
-            unadjustedMovement: true,
-        });
-        } else {
-            await document.exitPointerLock();
-        }
+document.addEventListener("pointerlockchange", onLockChange);
+// canvas.addEventListener("click", async e => {
+//     if (e.button == 0) {
+//         console.log("Click");
+//         console.log(e);
+//         if (!document.pointerLockElement) {
+//             await canvas.requestPointerLock({
+//             unadjustedMovement: true,
+//         });
+//         } else {
+//             await document.exitPointerLock();
+//         }
+//     }
+//   }
+// );
+async function togglePointerLock() {
+    //console.log("Toggle");
+    if (!document.pointerLockElement) {
+        await canvas.requestPointerLock({
+        unadjustedMovement: true,
+    });
+    } else {
+        await document.exitPointerLock();
     }
-  }
-);
-function lockChange() {
+}
+function onLockChange() {
     if (document.pointerLockElement === canvas) document.addEventListener("mousemove", updatePosition);
     else document.removeEventListener("mousemove", updatePosition);
 }
@@ -347,6 +362,7 @@ class GameSettings {
     doubleDraw = false;
     showCrossHair = true;
     selectFace = true;
+    crossHairRadius = 20;
 }
 const gameSettings = new GameSettings();
 class GameObject {
@@ -781,26 +797,36 @@ class Sphere extends GameObject {
 }
 class SimpleSphere extends GameObject {
     radius = 2000;
-    radius2 = 3;
+    radius2 = 1.5;
     color = [255, 0, 0];
     factor = 1.5;
-    model = [new Pt(-1, 0, 0)]; // north pole
+    model = [new Pt(-1, 0, 0)];
     draw(camera) {
-        const wp = this.toWorldPoint(this.model[0]);
+        const unitVector2 = this.model[0];
+        const worldpointWestPole = this.toWorldPoint(this.model[0]);
         const light = scene.lights[0];
 
         const lightVector = normaliseVector(subtractVector(this.position, light.position));
-        const cameraVector = normaliseVector(subtractVector(this.position, camera.position));
-        const wpVector = normaliseVector(subtractVector(wp, camera.position));
-        const midVector = normaliseVector(addVector(lightVector, cameraVector));
+        const unitvectorSphereCentreToCamera = normaliseVector(subtractVector(this.position, camera.position));
+        const unitvectorWestPoleToCamera = normaliseVector(subtractVector(worldpointWestPole, camera.position));
+        const midVector = normaliseVector(addVector(lightVector, unitvectorSphereCentreToCamera));
 
-        const cross = crossProduct(wpVector, cameraVector);
-        const lengthCross = length(cross);
+        const camCenter = this.toCameraPoint(this.position, camera);
+        const xyCenterPoint = this.toXyPoint(camCenter);
+        const unitvectorToEdge = crossProduct(unitvectorSphereCentreToCamera, unitVector2);
+        const vectorToEdge = multiplyVector(unitvectorToEdge, this.radius2);
+        const worldpointEdge = addVector(this.position, vectorToEdge);
+        const camEdge = this.toCameraPoint(worldpointEdge, camera);
+        const xyEdgePoint = this.toXyPoint(camEdge);
 
-        const cameraRelativeNorthPole = addVector(multiplyVector(cross, this.radius2), this.position);
+        const unitvectorNorthPole = crossProduct(unitvectorWestPoleToCamera, unitvectorSphereCentreToCamera); // NORMAL to westpole-centre-camera
+        //const lengthCross = length(unitvectorNorthPole);
 
-        const xyCross = this.toXyPoint(this.toCameraPoint(cross, camera));
-        const xyCross2 = this.toXyPoint(this.toCameraPoint(cameraRelativeNorthPole, camera));
+        const camerapointNorthPole = addVector(multiplyVector(unitvectorNorthPole, this.radius2), this.position);
+        //const cameraPointWestPole = addVector(multiplyVector(unitvectorWestPole, this.radius2), this.position);
+
+        //const xyNorthPole = this.toXyPoint(this.toCameraPoint(unitvectorNorthPole, camera));
+        //const xyNorthPole = this.toXyPoint(this.toCameraPoint(camerapointNorthPole, camera));
 
         // calculate angle between vectors. PI = spec reflection on circle's edge
         // 0.5 PI (90 degs) = spec reflection halfway between center of circle and edge
@@ -813,29 +839,41 @@ class SimpleSphere extends GameObject {
 
         //const xyLight = this.toXyPoint(this.toCameraPoint(camera.position, camera));
 
+        const xyRadius = Math.sqrt((xyCenterPoint.x - xyEdgePoint.x) ** 2 + (xyCenterPoint.y - xyEdgePoint.y) ** 2);
+
         const xyPosition = this.toXyPoint(this.toCameraPoint(this.position, camera));
         if (xyPosition) {
             const distance = dist3d(this.position, camera.position);
-            const radius = this.radius / distance;
-            if (radius > 1) {
+            //const radius = this.radius / distance;
+            if (xyRadius > 1) {
                 view.fillStyle = arrayToColor(this.color);
                 view.beginPath();
-                view.arc(xyPosition.x, xyPosition.y, radius, 0, Math.PI * 2);
+                view.arc(xyPosition.x, xyPosition.y, xyRadius, 0, Math.PI * 2);
                 view.fill();
 
-                const mv = multiplyVector(midVector, this.factor);
+                const mv = multiplyVector(midVector, this.radius2);
                 const av = addVector(this.position, mv);
                 const cp = this.toCameraPoint(av, camera);
                 const spot = this.toXyPoint(cp);
                 view.fillStyle = arrayToColor(light.color);
                 this.dot(spot);
 
-                view.fillStyle = "lime";
-                this.dot(xyCross);
+                view.save();
+                view.clip();
+                const grad = view.createRadialGradient(spot.x, spot.y, xyRadius / distance, spot.x, spot.y, xyRadius * 2);
+                grad.addColorStop(0, arrayToColor(light.color));
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                view.fillStyle = grad;
+                view.fillRect(spot.x - xyRadius * 2, spot.y - xyRadius * 2, xyRadius * 4, xyRadius * 4);
+                view.restore();
 
-                view.fillStyle = "aqua";
-                this.dot(xyCross2);
-        
+                // view.fillStyle = "lime";
+                // this.dot(xyNorthPole);
+
+                // view.strokeStyle = "aqua";
+                // this.moveTo(xyCenterPoint);
+                // this.lineTo(xyEdgePoint);
+                // view.stroke();
             }
         }
     }
@@ -1156,7 +1194,7 @@ lightSource1.color = [255, 255, 0];
 const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
-const camera = new Camera(0, 5, -70);
+const camera = new Camera(0, 0, 0);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
@@ -1240,8 +1278,8 @@ cube.connect(wedge);
 //#region Animate
 function animate() {
     //#region Game Input
-    if (GameInput.isForward) camera.moveForward(0.3);
-    if (GameInput.isBack) camera.moveBack(0.3);
+    if (GameInput.isForward) camera.moveForward(0.1);
+    if (GameInput.isBack) camera.moveBack(0.1);
     if (GameInput.isRight) camera.moveRight(0.1);
     if (GameInput.isLeft) camera.moveLeft(0.1);
     if (GameInput.isTurnRight) {
@@ -1265,11 +1303,11 @@ function animate() {
         view.lineWidth = 2;
         view.beginPath();
         view.strokeStyle = "white";
-        view.arc(0, 0, 18, 0, Math.PI * 2);
+        view.arc(0, 0, gameSettings.crossHairRadius - 2, 0, Math.PI * 2);
         view.stroke();
         view.strokeStyle = "black";
         view.beginPath();
-        view.arc(0, 0, 20, 0, Math.PI * 2);
+        view.arc(0, 0, gameSettings.crossHairRadius, 0, Math.PI * 2);
         view.stroke();
         view.lineWidth = oldLineWidth;
         view.strokeStyle = oldStroke;
