@@ -796,84 +796,51 @@ class Sphere extends GameObject {
     }
 }
 class SimpleSphere extends GameObject {
-    radius = 2000;
-    radius2 = 1.5;
+    radius = 1.5;
     color = [255, 0, 0];
-    factor = 1.5;
+    factor = 1;
     model = [new Pt(-1, 0, 0)];
     draw(camera) {
         const unitVector2 = this.model[0];
-        const worldpointWestPole = this.toWorldPoint(this.model[0]);
-        const light = scene.lights[0];
-
-        const lightVector = normaliseVector(subtractVector(this.position, light.position));
         const unitvectorSphereCentreToCamera = normaliseVector(subtractVector(this.position, camera.position));
-        const unitvectorWestPoleToCamera = normaliseVector(subtractVector(worldpointWestPole, camera.position));
-        const midVector = normaliseVector(addVector(lightVector, unitvectorSphereCentreToCamera));
-
         const camCenter = this.toCameraPoint(this.position, camera);
-        const xyCenterPoint = this.toXyPoint(camCenter);
+        const xySphereCenter = this.toXyPoint(camCenter);
         const unitvectorToEdge = crossProduct(unitvectorSphereCentreToCamera, unitVector2);
-        const vectorToEdge = multiplyVector(unitvectorToEdge, this.radius2);
+        const vectorToEdge = multiplyVector(unitvectorToEdge, this.radius);
         const worldpointEdge = addVector(this.position, vectorToEdge);
         const camEdge = this.toCameraPoint(worldpointEdge, camera);
-        const xyEdgePoint = this.toXyPoint(camEdge);
+        const xySphereEdge = this.toXyPoint(camEdge);
 
-        const unitvectorNorthPole = crossProduct(unitvectorWestPoleToCamera, unitvectorSphereCentreToCamera); // NORMAL to westpole-centre-camera
-        //const lengthCross = length(unitvectorNorthPole);
-
-        const camerapointNorthPole = addVector(multiplyVector(unitvectorNorthPole, this.radius2), this.position);
-        //const cameraPointWestPole = addVector(multiplyVector(unitvectorWestPole, this.radius2), this.position);
-
-        //const xyNorthPole = this.toXyPoint(this.toCameraPoint(unitvectorNorthPole, camera));
-        //const xyNorthPole = this.toXyPoint(this.toCameraPoint(camerapointNorthPole, camera));
-
-        // calculate angle between vectors. PI = spec reflection on circle's edge
-        // 0.5 PI (90 degs) = spec reflection halfway between center of circle and edge
-        // 0 (light is behind/near camera) = spec ref in centre of circle
-
-        // const dp = dotProduct(lightVector, cameraVector);
-        // const angle = Math.acos(dp / length(lightVector) * length(cameraVector));
-        // // if (angle > Math.PI) angle -= (angle - Math.PI);
-        // const ratio =  angle / Math.PI; // 1 = edge, 0 = centre
-
-        //const xyLight = this.toXyPoint(this.toCameraPoint(camera.position, camera));
-
-        const xyRadius = Math.sqrt((xyCenterPoint.x - xyEdgePoint.x) ** 2 + (xyCenterPoint.y - xyEdgePoint.y) ** 2);
-
-        const xyPosition = this.toXyPoint(this.toCameraPoint(this.position, camera));
-        if (xyPosition) {
-            const distance = dist3d(this.position, camera.position);
-            //const radius = this.radius / distance;
+        if (xySphereCenter && xySphereEdge) {
+            const xyRadius = Math.sqrt((xySphereCenter.x - xySphereEdge.x) ** 2 + (xySphereCenter.y - xySphereEdge.y) ** 2);
             if (xyRadius > 1) {
                 view.fillStyle = arrayToColor(this.color);
                 view.beginPath();
-                view.arc(xyPosition.x, xyPosition.y, xyRadius, 0, Math.PI * 2);
+                view.arc(xySphereCenter.x, xySphereCenter.y, xyRadius, 0, Math.PI * 2);
                 view.fill();
-
-                const mv = multiplyVector(midVector, this.radius2);
-                const av = addVector(this.position, mv);
-                const cp = this.toCameraPoint(av, camera);
-                const spot = this.toXyPoint(cp);
-                view.fillStyle = arrayToColor(light.color);
-                this.dot(spot);
-
-                view.save();
-                view.clip();
-                const grad = view.createRadialGradient(spot.x, spot.y, xyRadius / distance, spot.x, spot.y, xyRadius * 2);
-                grad.addColorStop(0, arrayToColor(light.color));
-                grad.addColorStop(1, 'rgba(255,255,255,0)');
-                view.fillStyle = grad;
-                view.fillRect(spot.x - xyRadius * 2, spot.y - xyRadius * 2, xyRadius * 4, xyRadius * 4);
-                view.restore();
-
-                // view.fillStyle = "lime";
-                // this.dot(xyNorthPole);
-
-                // view.strokeStyle = "aqua";
-                // this.moveTo(xyCenterPoint);
-                // this.lineTo(xyEdgePoint);
-                // view.stroke();
+                
+                view.globalCompositeOperation = "hard-light";
+                //const light = scene.lights[0];
+                for (const light of scene.lights) {
+                    const lightVector = normaliseVector(subtractVector(this.position, light.position));
+                    const midVector = normaliseVector(addVector(lightVector, unitvectorSphereCentreToCamera));
+                    const distance = dist3d(this.position, light.position);
+                    const mv = multiplyVector(midVector, this.radius);
+                    const av = addVector(this.position, mv);
+                    const cp = this.toCameraPoint(av, camera);
+                    const xySpecularCenter = this.toXyPoint(cp);
+                    if(xySpecularCenter) {
+                        view.save();
+                        view.clip();
+                        const grad = view.createRadialGradient(xySpecularCenter.x, xySpecularCenter.y, xyRadius / distance, xySpecularCenter.x, xySpecularCenter.y, xyRadius * 2);
+                        grad.addColorStop(0, arrayToColor(light.color));
+                        grad.addColorStop(1, 'rgba(255,255,255,0)');
+                        view.fillStyle = grad;
+                        view.fillRect(xySpecularCenter.x - xyRadius * 2, xySpecularCenter.y - xyRadius * 2, xyRadius * 4, xyRadius * 4);
+                        view.restore();
+                    }
+                }
+                view.globalCompositeOperation = "source-over";
             }
         }
     }
@@ -1088,11 +1055,36 @@ class SpotLight extends GameObject {
 
     }
 }
+class Rotation {
+    #x = 0;
+    #y = 0;
+    #dirty = false;
+    #direction = { x: 0, y: 0, z: 1 };
+    get x() { return this.#x; }
+    get y() { return this.#y; }
+    set x(value) {
+        this.#x = value;
+        this.#dirty = true;
+    }
+    set y(value) {
+        this.#y = value;
+        this.#dirty = true;
+    }
+    get heading() { return { x: -Math.sin(-this.#y), y: 0, z: Math.cos(-this.#y) }; }
+    get pitchVector() { return { x: Math.cos(-this.#y), y: 0, z: Math.sin(-this.#y) }; }
+    get direction() {
+        if (this.#dirty) {
+            Object.assign(this.#direction, rotatePointAroundUnitVector(this.heading, this.pitchVector, -this.#x));
+            this.#dirty = false;
+        }
+        return this.#direction;
+    }
+}
 class Camera {
     forwardVector = { x: 0, y: 0, z: 1 };
     rightVector = { x: 1, y: 0, z: 0 };
     upVector = { x: 0, y: 1, z: 0 };
-    rotation = { x: 0, y: 0 };
+    rotation = new Rotation(); // { x: 0, y: 0 };
     zoom = 1;
     max = 500;
     min = 1;
@@ -1106,11 +1098,13 @@ class Camera {
         //const heading = this.rotate(this.forwardVector, this.rotation, "y");
         //const pitchVector = this.rotate(this.rightVector, this.rotation, "y");
         //const direction = rotatePointAroundUnitVector(this.heading, pitchVector, -this.rotation.x);
-        const direction = rotatePointAroundUnitVector(this.heading, this.pitchVector, -this.rotation.x);
-        return direction;
+        //const direction = rotatePointAroundUnitVector(this.heading, this.pitchVector, -this.rotation.x);
+        //return direction;
         // const ry = this.rotate(this.model, this.rotation, "y");
         // const rx = this.rotate(ry, this.rotation, "x");
         // return rx;
+
+        return this.rotation.direction;
     }
     get rightDirection() {
         const rightPoint = this.rotate(this.rightVector, this.rotation, "y");
@@ -1200,10 +1194,10 @@ const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
 const pyramid = new Pyramid(0, -10, -50, 1, 1, 10);
 const wedge = new Wedge(-3, 0, 0, 1, 1, 1);
-const sphere2 = new Sphere(20, 20, 20, 16);
+const sphere2 = new Sphere(0, 0, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
 const tri1 = new Triangle(0, 0, -50);
-const simple = new SimpleSphere(15, 0, 10);
+const simple = new SimpleSphere(5, 0, 20);
 //#endregion
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
 const scene = new Scene(plane);
@@ -1253,7 +1247,7 @@ camPosition.add(camera.position, "y", -100, 100).listen();
 camPosition.add(camera.position, "z", -100, 100).listen();
 gui.add(scene, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
-gui.add(simple, "radius2", 0, 5);
+gui.add(simple, "radius", 0, 5);
 //#endregion
 //#region Setup scene
 scene.add(cube);
@@ -1278,10 +1272,11 @@ cube.connect(wedge);
 //#region Animate
 function animate() {
     //#region Game Input
-    if (GameInput.isForward) camera.moveForward(0.1);
-    if (GameInput.isBack) camera.moveBack(0.1);
-    if (GameInput.isRight) camera.moveRight(0.1);
-    if (GameInput.isLeft) camera.moveLeft(0.1);
+    const delta = 1;
+    if (GameInput.isForward) camera.moveForward(delta);
+    if (GameInput.isBack) camera.moveBack(delta);
+    if (GameInput.isRight) camera.moveRight(delta);
+    if (GameInput.isLeft) camera.moveLeft(delta);
     if (GameInput.isTurnRight) {
         camera.rotation.y += 0.01;
         xpos -= 25;
