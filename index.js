@@ -22,12 +22,14 @@ class Keyboard {
     })();
     static state = {};
     static keyDown(event) {
+        //console.log(event);
       const state = Keyboard.state[event.code];
       if (state === undefined)
         Keyboard.state[event.code] = new KeyState(true, true);
       else state.isPressed = true;
     }
     static keyUp(event) {
+        //console.log(event);
       const state = Keyboard.state[event.code];
       state.isPressed = false;
       state.isReleased = true;
@@ -350,6 +352,9 @@ function colorToArray(color) {
 function arrayToColor(a) {
     return `rgb(${a[0]},${a[1]},${a[2]})`;
 }
+function arrayToColorA(a) {
+    return `rgba(${a[0]},${a[1]},${a[2]},${a[3]})`;
+}
 //#endregion
 class Pt {
     constructor(x = 0, y = 0, z = 0) {
@@ -489,7 +494,7 @@ class Plane extends GameObject {
         this.model = [];
         for (let x = 0; x <= divs; ++x) {
             for (let z = 0; z <= divs; ++z) {
-                this.model.push({x: x * step + start, y, z: z * step + start});
+                this.model.push({x: x * step + start, y: y + Math.random() - 0.5, z: z * step + start});
             }
         }
         this.faces = [];
@@ -834,6 +839,7 @@ class SimpleSphere extends GameObject {
                         view.clip();
                         const grad = view.createRadialGradient(xySpecularCenter.x, xySpecularCenter.y, xyRadius / distance, xySpecularCenter.x, xySpecularCenter.y, xyRadius * 2);
                         grad.addColorStop(0, arrayToColor(light.color));
+                        //grad.addColorStop(0, `rgba(${light.color[0]},${light.color[1]},${light.color[2]},0.5)`);
                         grad.addColorStop(1, 'rgba(255,255,255,0)');
                         view.fillStyle = grad;
                         view.fillRect(xySpecularCenter.x - xyRadius * 2, xySpecularCenter.y - xyRadius * 2, xyRadius * 4, xyRadius * 4);
@@ -1055,6 +1061,129 @@ class SpotLight extends GameObject {
 
     }
 }
+class Particle {
+    color = [255, 255, 0, 1];
+    size = 5;
+    direction = { x: 0, y: 1, z: 0 };
+    speed = 0.01;
+    gravity = -0.07;
+    dy = 0;
+    fadeOut = 0.2;
+    constructor(pos, col = [255, 255, 255, 1], lifetime) {
+        this.lifetime = this.ttl = lifetime;
+        this.position = { x: pos.x, y: pos.y, z: pos.z };
+        this.color = [250, 125, 0, 1];
+        const variance = 100;
+        const varRed = Math.random() * variance - variance / 2;
+        this.color[0] = this.color[0] += varRed;
+        this.color[0] = this.clamp(this.color[0], 0, 255);
+
+        const varGreen = Math.random() * variance - variance / 2;
+        this.color[1] = this.color[1] += varGreen;
+        this.color[1] = this.clamp(this.color[1], 0, 255);
+
+        const varBlue = Math.random() * variance - variance / 2;
+        this.color[2] = this.color[2] += varBlue;
+        this.color[2] = this.clamp(this.color[2], 0, 255);
+       
+    }
+    clamp(v, l, u) {
+        if (v < l) return l;
+        if (v > u) return u;
+        return v;
+    }
+    draw(camera) {
+        if (this.ttl > 0) {
+            this.ttl -= 1;
+            this.direction.y += this.gravity;
+            Object.assign(this.position, addVector(this.position, multiplyVector(this.direction, this.speed)));
+            if (this.position.y < -10) {
+                this.position.y = -10;
+                this.direction.y = -this.direction.y * 0.95;
+            }
+            const xy = this.toXyPoint(this.toCameraPoint(this.position, camera));
+            if (xy) {
+                const fadePoint = this.lifetime * this.fadeOut;
+                this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 1;
+                const color = arrayToColorA(this.color);
+                const oldFillStyle = view.fillStyle;
+                view.fillStyle = color;
+                //view.fillRect(xy.x, xy.y, this.size, this.size);
+                view.beginPath();
+                view.arc(xy.x, xy.y, this.size, 0, Math.PI * 2);
+                view.fill();
+                view.fillStyle = oldFillStyle;
+            }
+        }
+    }
+    toCameraPoint(p, camera) {
+        const cp = subtractVector(camera.position, p);
+        const l = length(cp);
+        if (l > camera.max) return null;
+        const cv = normaliseVector(cp);
+        const dp = dotProduct(cv, camera.direction);
+        if (dp < 0 /*camera.fov*/) return null;
+        const ry = this.rotate(cp, camera.rotation, "y");
+        const rx = this.rotate(ry, camera.rotation, "x");
+        return rx;
+    }
+    toXyPoint(p) {
+        if (p == null || p.z == 0) return null;
+        const xy = { x: p.x / p.z * canvas.width, y: p.y / p.z * canvas.width };
+        return xy;
+    }
+    rotate(p, rotation, axis = "y") {
+        const angle = rotation[axis];
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        switch(axis) {
+            case "x": return { x: p.x, y: p.y * cos - p.z * sin, z: p.y * sin + p.z * cos };
+            case "y": return { x: p.x * cos - p.z * sin, y: p.y, z: p.x * sin + p.z * cos };
+            case "z": return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z };
+        }
+    }
+}
+class ParticleGenerator {
+    rate = 0.5;
+    color = [255, 255, 0, 1];
+    size = 1;
+    varSize = 0;
+    shape = 1;
+    direction = { x: 0, y: 1, z: 0 };
+    speed = 0.05;
+    varDirection = 0;
+    ttl = 300;
+    particles = [];
+    active = true;
+    constructor(x, y, z) {
+        this.position = { x, y, z };
+    }
+    draw(camera) {
+        if (this.active) {
+            if (this.rate > 1) {
+                for (let i = 0; i < this.rate; ++i) {
+                    this.particles.push(this.newParticle());
+                }
+            } else {
+                if (Math.random() < this.rate) this.particles.push(this.newParticle());
+            }
+
+            const oldFillStyle = view.fillStyle;
+            for (const p of this.particles) p.draw(camera);
+            view.fillStyle = oldFillStyle;
+            if (this.particles.length > 1000) this.particles = this.particles.filter(p => p.ttl > 0);
+        }
+    }
+    distance(camera) {
+        return Math.sqrt((this.x - camera.x)**2 + (this.y - camera.y)**2 + (this.z - camera.z)**2);
+    }
+    newParticle() {
+        const p = new Particle(this.position, this.color, this.ttl);
+        p.direction = { x: Math.random() * 2 - 1, y: Math.random() * 2, z: Math.random() * 2 - 1 };
+        p.speed = Math.random() * 0.3;
+        return p;
+    }
+}
 class Rotation {
     #x = 0;
     #y = 0;
@@ -1188,7 +1317,9 @@ lightSource1.color = [255, 255, 0];
 const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
-const camera = new Camera(0, 0, 0);
+const camera = new Camera(0, 0, 50);
+const peg = new ParticleGenerator(0, -9, 70);
+const pyramid2 = new Pyramid(0, -10, 70);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
@@ -1247,6 +1378,7 @@ camPosition.add(camera.position, "y", -100, 100).listen();
 camPosition.add(camera.position, "z", -100, 100).listen();
 gui.add(scene, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
+gui.add(gameSettings, "showCrossHair").name("Crosshair");
 gui.add(simple, "radius", 0, 5);
 //#endregion
 //#region Setup scene
@@ -1261,6 +1393,8 @@ scene.addLight(lightSource1);
 scene.addLight(lightSource2);
 scene.add(tri1);
 scene.add(simple);
+scene.add(peg);
+scene.add(pyramid2);
 //scene.add(spotlight1);
 
 
