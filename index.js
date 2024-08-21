@@ -494,7 +494,7 @@ class Plane extends GameObject {
         this.model = [];
         for (let x = 0; x <= divs; ++x) {
             for (let z = 0; z <= divs; ++z) {
-                this.model.push({x: x * step + start, y: y + Math.random() - 0.5, z: z * step + start});
+                this.model.push({x: x * step + start, y/*: y + Math.random() * 5*/, z: z * step + start});
             }
         }
         this.faces = [];
@@ -1066,10 +1066,10 @@ class Particle {
     size = 5;
     direction = { x: 0, y: 1, z: 0 };
     speed = 0.01;
-    gravity = -0.07;
+    gravity = -0.005;
     dy = 0;
     fadeOut = 0.2;
-    constructor(pos, col = [255, 255, 255, 1], lifetime) {
+    constructor(pos, col = [255, 255, 255, 1], lifetime, direction, spread) {
         this.lifetime = this.ttl = lifetime;
         this.position = { x: pos.x, y: pos.y, z: pos.z };
         this.color = [250, 125, 0, 1];
@@ -1085,7 +1085,17 @@ class Particle {
         const varBlue = Math.random() * variance - variance / 2;
         this.color[2] = this.color[2] += varBlue;
         this.color[2] = this.clamp(this.color[2], 0, 255);
-       
+
+        Object.assign(this.direction, direction);
+        if (spread) {
+            const varX = this.rnd(-spread, spread);
+            this.direction.x += varX;
+            const varZ = this.rnd(-spread, spread);
+            this.direction.z += varZ;
+        }
+    }
+    rnd(min, max) {
+        return Math.random() * (max - min) + min;
     }
     clamp(v, l, u) {
         if (v < l) return l;
@@ -1133,7 +1143,7 @@ class Particle {
         return xy;
     }
     rotate(p, rotation, axis = "y") {
-        const angle = rotation[axis];
+        const angle = rotation[axis] ?? rotation;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
         switch(axis) {
@@ -1143,7 +1153,7 @@ class Particle {
         }
     }
 }
-class ParticleGenerator {
+class ParticleEmitter {
     rate = 0.5;
     color = [255, 255, 0, 1];
     size = 1;
@@ -1151,7 +1161,7 @@ class ParticleGenerator {
     shape = 1;
     direction = { x: 0, y: 1, z: 0 };
     speed = 0.05;
-    varDirection = 0;
+    spread = 0.5;
     ttl = 300;
     particles = [];
     active = true;
@@ -1178,8 +1188,8 @@ class ParticleGenerator {
         return Math.sqrt((this.x - camera.x)**2 + (this.y - camera.y)**2 + (this.z - camera.z)**2);
     }
     newParticle() {
-        const p = new Particle(this.position, this.color, this.ttl);
-        p.direction = { x: Math.random() * 2 - 1, y: Math.random() * 2, z: Math.random() * 2 - 1 };
+        const p = new Particle(this.position, this.color, this.ttl, this.direction, this.spread);
+        //p.direction = { x: Math.random() * 2 - 1, y: Math.random() * 2, z: Math.random() * 2 - 1 };
         p.speed = Math.random() * 0.3;
         return p;
     }
@@ -1318,7 +1328,7 @@ const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
 const camera = new Camera(0, 0, 50);
-const peg = new ParticleGenerator(0, -9, 70);
+const peg = new ParticleEmitter(0, -9, 70);
 const pyramid2 = new Pyramid(0, -10, 70);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
