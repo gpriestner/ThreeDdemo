@@ -801,7 +801,7 @@ class Sphere extends GameObject {
     }
 }
 class SimpleSphere extends GameObject {
-    radius = 1.5;
+    radius = 1;
     color = [255, 0, 0];
     factor = 1;
     model = [new Pt(-1, 0, 0)];
@@ -1063,7 +1063,7 @@ class SpotLight extends GameObject {
 }
 class Particle {
     color = [255, 255, 0, 1];
-    size = 5;
+    size = 8;
     direction = { x: 0, y: 1, z: 0 };
     speed = 0.01;
     gravity = -0.005;
@@ -1114,14 +1114,24 @@ class Particle {
             const xy = this.toXyPoint(this.toCameraPoint(this.position, camera));
             if (xy) {
                 const fadePoint = this.lifetime * this.fadeOut;
-                this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 1;
+                this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 0.5;
                 const color = arrayToColorA(this.color);
                 const oldFillStyle = view.fillStyle;
-                view.fillStyle = color;
+                //view.fillStyle = color;
                 //view.fillRect(xy.x, xy.y, this.size, this.size);
-                view.beginPath();
-                view.arc(xy.x, xy.y, this.size, 0, Math.PI * 2);
-                view.fill();
+
+                // view.beginPath();
+                // view.arc(xy.x, xy.y, this.size, 0, Math.PI * 2);
+                // view.fill();
+
+                const grad = view.createRadialGradient(xy.x, xy.y, 0, xy.x, xy.y, this.size);
+                grad.addColorStop(0, color);
+                const colorStop = `rgba(${this.color[0]},${this.color[1]},${this.color[2]},0)`;
+                grad.addColorStop(1, colorStop);
+                view.fillStyle = grad;
+                view.fillRect(xy.x - this.size, xy.y - this.size, this.size * 2, this.size * 2);
+
+
                 view.fillStyle = oldFillStyle;
             }
         }
