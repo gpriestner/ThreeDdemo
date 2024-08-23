@@ -88,13 +88,10 @@ class GameInput {
     static get isBack() {
     return Keyboard.isDown("KeyS") || Mouse.RightDown;
     }
-    static get isUp() {
-        return Keyboard.isDown("ArrowUp");
-    }
-    static get isDown() {
-        return Keyboard.isDown("ArrowDown");
-    }
+    static get isUp() { return Keyboard.isDown("ArrowUp"); }
+    static get isDown() { return Keyboard.isDown("ArrowDown"); }
     static get isReset() { return Keyboard.isPressed("KeyR"); }
+    static get isFire() { return Keyboard.isPressed("KeyF"); }
 }
 //#endregion
 //#region Resize handler
@@ -368,6 +365,7 @@ class GameSettings {
     showCrossHair = true;
     selectFace = true;
     crossHairRadius = 20;
+    flyMode = true;
 }
 const gameSettings = new GameSettings();
 class GameObject {
@@ -628,6 +626,7 @@ class Face extends GameObject {
     }
     fill(points, color, camera) {
         const fp = this.getFacePoints(points);
+        let c = 0;
         for(const p of fp) if (!p.xy) return;
         let col = this.toRGB(color);
         view.fillStyle = col;
@@ -805,7 +804,12 @@ class SimpleSphere extends GameObject {
     color = [255, 0, 0];
     factor = 1;
     model = [new Pt(-1, 0, 0)];
+    #direction = { x: 0, y: 0, z: 1 };
+    get direction() { return this.#direction; }
+    set direction(d) { Object.assign(this.#direction, d); }
     draw(camera) {
+        if (this.direction && this.speed) Object.assign(this.position, addVector(this.position, multiplyVector(this.direction, this.speed)));
+
         const unitVector2 = this.model[0];
         const unitvectorSphereCentreToCamera = normaliseVector(subtractVector(this.position, camera.position));
         const camCenter = this.toCameraPoint(this.position, camera);
@@ -1066,8 +1070,6 @@ class Particle {
     size = 8;
     direction = { x: 0, y: 1, z: 0 };
     speed = 0.01;
-    gravity = -0.005;
-    dy = 0;
     fadeOut = 0.2;
     constructor(pos, col = [255, 255, 255, 1], lifetime, direction, spread) {
         this.lifetime = this.ttl = lifetime;
@@ -1105,7 +1107,7 @@ class Particle {
     draw(camera) {
         if (this.ttl > 0) {
             this.ttl -= 1;
-            this.direction.y += this.gravity;
+            this.direction.y += this.parent.gravity;
             Object.assign(this.position, addVector(this.position, multiplyVector(this.direction, this.speed)));
             if (this.position.y < -10) {
                 this.position.y = -10;
@@ -1114,7 +1116,7 @@ class Particle {
             const xy = this.toXyPoint(this.toCameraPoint(this.position, camera));
             if (xy) {
                 const fadePoint = this.lifetime * this.fadeOut;
-                this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 0.5;
+                this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 1;
                 const color = arrayToColorA(this.color);
                 const oldFillStyle = view.fillStyle;
                 //view.fillStyle = color;
@@ -1170,9 +1172,10 @@ class ParticleEmitter {
     varSize = 0;
     shape = 1;
     direction = { x: 0, y: 1, z: 0 };
-    speed = 0.05;
+    speed = 0.3;
     spread = 0.5;
     ttl = 300;
+    gravity = -0.005;
     particles = [];
     active = true;
     constructor(x, y, z) {
@@ -1195,12 +1198,13 @@ class ParticleEmitter {
         }
     }
     distance(camera) {
-        return Math.sqrt((this.x - camera.x)**2 + (this.y - camera.y)**2 + (this.z - camera.z)**2);
+        return Math.sqrt((this.position.x - camera.position.x)**2 + (this.position.y - camera.position.y)**2 + (this.position.z - camera.position.z)**2);
     }
     newParticle() {
         const p = new Particle(this.position, this.color, this.ttl, this.direction, this.spread);
+        p.parent = this;
         //p.direction = { x: Math.random() * 2 - 1, y: Math.random() * 2, z: Math.random() * 2 - 1 };
-        p.speed = Math.random() * 0.3;
+        p.speed = Math.random() * this.speed;
         return p;
     }
 }
@@ -1275,24 +1279,11 @@ class Camera {
     }
     moveLeft(dist) {
         this.moveRight(-dist);
-        // const forwardVector = this.direction;
-        // const leftVector = { x: -forwardVector.z, y: forwardVector.y, z: forwardVector.x };
-        // const moveVector = multiplyVector(leftVector, dist);
-        // Object.assign(this.position, addVector(this.position, moveVector));
     }
     moveUp(dist = 1) {
-        // const forwardVector = this.direction;
-        // const upVector = { x: forwardVector.x, y: forwardVector.z, z: -forwardVector.y };
-        // const moveVector = multiplyVector(upVector, dist);
-        // Object.assign(this.position, addVector(this.position, moveVector));
         this.position.y += 0.1 * dist;
     }
     moveDown(dist = 1) {
-        // const forwardVector = this.direction;
-        // const downVector = { x: forwardVector.x, y: -forwardVector.z, z: forwardVector.y };
-        // const moveVector = multiplyVector(downVector, dist);
-        // Object.assign(this.position, addVector(this.position, moveVector));
-        //this.position.y -= 0.1 * dist;
         this.moveUp(-dist);
     }
     reset() {
@@ -1400,6 +1391,8 @@ gui.add(scene, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
 gui.add(gameSettings, "showCrossHair").name("Crosshair");
 gui.add(simple, "radius", 0, 5);
+gui.add(peg, "gravity", -0.1, 0);
+gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
 scene.add(cube);
@@ -1444,6 +1437,13 @@ function animate() {
     if (GameInput.isUp) camera.moveUp(1);
     if (GameInput.isDown) camera.moveDown(1);
     if (GameInput.isReset) camera.reset();
+    if (GameInput.isFire) {
+        const bullet = new SimpleSphere(camera.position.x, camera.position.y, camera.position.z);
+        bullet.direction = camera.direction;
+        bullet.speed = 1;
+        bullet.scale = 0.2;
+        scene.add(bullet);
+    }
     //#endregion
     scene.draw(camera);
     if (gameSettings.showCrossHair) {
