@@ -256,9 +256,10 @@ lightFolder.add(light.position, "x", -10, 10);
 lightFolder.add(light.position, "y", -10, 10);
 lightFolder.add(light.position, "z", 1, 50);
 const cameraFolder = gui.addFolder("Camera");
-cameraFolder.add(camera.position, "x", -20, 20);
-cameraFolder.add(camera.position, "y", -20, 20);
-cameraFolder.add(camera.position, "z", 10, 200);
+const cameraPosition = cameraFolder.addFolder("Position");
+cameraPosition.add(camera.position, "x", -20, 20);
+cameraPosition.add(camera.position, "y", -20, 20);
+cameraPosition.add(camera.position, "z", -100, 100);
 //#endregion
 function animate() {
     scene.draw(camera);
