@@ -18,6 +18,55 @@ function resize() {
 resize();
 addEventListener("resize", resize);
 
+//#region Pointer Lock
+canvas.addEventListener("click", togglePointerLock);
+document.addEventListener("pointerlockchange", onLockChange);
+async function togglePointerLock() {
+    if (!document.pointerLockElement) {
+        await canvas.requestPointerLock({
+        unadjustedMovement: true,
+    });
+    } else {
+        await document.exitPointerLock();
+    }
+}
+function onLockChange() {
+    if (document.pointerLockElement === canvas) document.addEventListener("mousemove", updatePosition);
+    else document.removeEventListener("mousemove", updatePosition);
+}
+function updatePosition(e) {
+
+    camera.rotation.x -= e.movementY / 1000; // look up/down
+    camera.rotation.y += e.movementX / 1000; // look left/right
+
+    if (camera.rotation.x > Math.PI) camera.rotation.x -= Math.PI * 2;
+    if (camera.rotation.x < -Math.PI) camera.rotation.x += Math.PI * 2;
+    if (camera.rotation.y > Math.PI) camera.rotation.y -= Math.PI * 2;
+    if (camera.rotation.y < -Math.PI) camera.rotation.y += Math.PI * 2;
+}
+document.addEventListener("wheel", async e => {
+    if(e.deltaY) camera.position.y += -e.deltaY / 20; // camera.moveUp(-e.deltaY / 20);
+    //if(e.deltaX) camera.moveRight(e.deltaX / 100);
+});
+//#endregion
+
+
+addEventListener("keydown", keyDown);
+function keyDown(e) {
+    //console.log(e);
+    Keyboard.keys[e.code] = true;
+}
+addEventListener("keyup", keyUp);
+function keyUp(e) {
+    Keyboard.keys[e.code] = false;
+}
+class Keyboard {
+    static keys = [];
+    static isPressed(code) {
+        if (Keyboard.keys[code] === undefined) return false;
+        else return Keyboard.keys[code];
+    }
+}
 // view.beginPath();
 // view.moveTo(0, 0);
 // view.lineTo(100, 100);
@@ -59,7 +108,7 @@ class Face {
         const vectorAC = subtractVector(faceWorldPoints[2], faceWorldPoints[0]);
 
         const normalVector = crossProduct(vectorAB, vectorAC);
-        const cameraVector = faceWorldPoints[0];
+        const cameraVector = subtractVector(camera.position, faceWorldPoints[0]);
         const normalizedCameraVector = normalizeVector(cameraVector);
         const dp = dotProduct(normalVector, normalizedCameraVector);
         const visible = dp < 0;
@@ -100,7 +149,7 @@ class GameObject {
         const r2 = this.rotate(r1, this.rotation, "y");
         const r3 = this.rotate(r2, this.rotation, "z");
         return r3;
-     }
+    }
     toWorldPoint(p, camera) {
         const wp = { 
             x: this.position.x - camera.position.x + p.x * this.scale, 
@@ -108,6 +157,12 @@ class GameObject {
             z: this.position.z - camera.position.z + p.z * this.scale, 
         };
         return wp;
+    }
+    toCameraPoint(p, camera) {
+        const cp = subtractVector(camera.position, p);
+        const ry = this.rotate(cp, camera.rotation, "y");
+        const rx = this.rotate(ry, camera.rotation, "x");
+        return rx;
     }
     toXyPoint(p) {
         const xyp = 
@@ -132,7 +187,7 @@ class GameObject {
     lineTo(p) { view.lineTo(p.x, p.y); }
 }
 class Cube extends GameObject {
-    color = [128, 128, 128];
+    color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
     model = [
         new Pt(-1, 1, -1), 
         new Pt(1, 1, -1), 
@@ -156,19 +211,21 @@ class Cube extends GameObject {
         this.scale = s;
         this.position = { x, y, z };
         this.rotation = { x: 0, y: 0, z: 0 };
+        this.rdx = Math.random () * 0.06 - 0.03;
+        this.rdy = Math.random () * 0.06 - 0.03;
     }
     draw(camera) {
-        this.rotation.x += 0.005;
-        this.rotation.y += 0.005;
-        this.rotation.z += 0.005;
+        this.rotation.x += this.rdx;
+        this.rotation.y += this.rdy;
     
         const points = [], wPoints = [], xYpoints = [];
         for (let i = 0; i < this.model.length; ++i) {
             const lp = this.toLocalPoint(this.model[i])
             const wp = this.toWorldPoint(lp, camera);
             wPoints.push(wp);
-            const cp = this.toXyPoint(wp);
-            xYpoints.push(cp);
+            const cp = this.toCameraPoint(wp, camera);
+            const xy = this.toXyPoint(cp);
+            xYpoints.push(xy);
         }
 
         for (const f of this.faces) f.draw(wPoints, xYpoints, this.color);
@@ -207,13 +264,16 @@ class PointLight extends GameObject {
     }
     draw(camera) {
         const wp = this.toWorldPoint(this.position, camera);
-        const xy = this.toXyPoint(wp);
-        const dist = Math.sqrt(this.position.x ** 2 + this.position.y **2 + this.position.z ** 2);
-        const radius = this.raduis / dist;
-        view.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
-        view.beginPath();
-        view.arc(xy.x, xy.y, radius, 0, Math.PI * 2);
-        view.fill();
+        const cp = this.toCameraPoint(wp, camera);
+        const xy = this.toXyPoint(cp);
+        if (xy) {
+            const dist = Math.sqrt(this.position.x ** 2 + this.position.y **2 + this.position.z ** 2);
+            const radius = this.raduis / dist;
+            view.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
+            view.beginPath();
+            view.arc(xy.x, xy.y, radius, 0, Math.PI * 2);
+            view.fill();
+        }
     }
 }
 class Scene {
@@ -227,11 +287,12 @@ class Scene {
 class Camera {
     constructor(x, y, z) {
         this.position = { x, y, z };
+        this.rotation = { x: 0, y: 0 };
     }
 }
 const cube = new Cube(0, 0, 20, 2);
 const cube2 = new Cube(5, 5, 20, 2);
-const light = new PointLight(5, 5, 20);
+const light = new PointLight(5, 5, 1);
 const camera = new Camera(0, 0, 0);
 
 const scene = new Scene();
@@ -260,8 +321,17 @@ const cameraPosition = cameraFolder.addFolder("Position");
 cameraPosition.add(camera.position, "x", -20, 20);
 cameraPosition.add(camera.position, "y", -20, 20);
 cameraPosition.add(camera.position, "z", -100, 100);
+const cameraRotation = cameraFolder.addFolder("Rotation");
+cameraRotation.add(camera.rotation, "x", -Math.PI, Math.PI);
+cameraRotation.add(camera.rotation, "y", -Math.PI, Math.PI);
 //#endregion
 function animate() {
+    if (Keyboard.isPressed("KeyA")) camera.position.x -= 0.2;
+    if (Keyboard.isPressed("KeyD")) camera.position.x += 0.2;
+    if (Keyboard.isPressed("KeyW")) camera.position.z += 0.2;
+    if (Keyboard.isPressed("KeyS")) camera.position.z -= 0.2;
+    if (Keyboard.isPressed("ArrowUp")) camera.position.y += 0.2;
+    if (Keyboard.isPressed("ArrowDown")) camera.position.y -= 0.2;
     scene.draw(camera);
     requestAnimationFrame(animate);
 }
