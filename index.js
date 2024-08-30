@@ -299,6 +299,15 @@ const scene = new Scene();
 scene.add(light);
 scene.add(cube);
 //scene.add(cube2);
+
+for (let i = 0; i < 100; ++i) {
+    const x = Math.random() * 40;
+    const y = Math.random() * 40;
+    const z = Math.random();
+    const c = new Cube(x - 20, y - 20, z * 50 + 10);
+    scene.add(c);
+}
+
 //#region DatGui
 const gui = new dat.GUI();
 gui.add(cube, "scale", 0.5, 10);
