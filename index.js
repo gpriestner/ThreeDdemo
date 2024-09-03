@@ -439,6 +439,7 @@ class GameObject {
   //     if (!this.parent) Object.assign(this.#position, o);
   // }
   rotation = { x: 0, y: 0, z: 0 };
+  auto = { x: 0, y: 0, z: 0 };
   constructor(x = 0, y = 0, z = 0, s = 1, sx = 1, sy = 1, sz = 1) {
     this.position = { x, y, z };
     this.scale = s;
@@ -454,6 +455,15 @@ class GameObject {
     if (this.auto?.x) this.rotation.x += this.auto.x;
     if (this.auto?.y) this.rotation.y += this.auto.y;
     if (this.auto?.z) this.rotation.z += this.auto.z;
+
+    if (this.model) {
+      this.points = [];
+      for (const p of this.model) {
+        const lp = this.toLocalPoint(p);
+        const wp = this.toWorldPoint(lp);
+        this.points.push({ lp, wp, id: p.id });
+      }
+    }
   }
   draw(camera) {
     const points = [];
@@ -464,10 +474,20 @@ class GameObject {
       const xy = this.toXyPoint(cp);
       points.push({ wp, cp, xy, id: p.id });
     }
+
+    camera.points = [];
+    for (const p of this.points) {
+      const wp = { x: p.wp.x, y: p.wp.y, z: p.wp.z };
+      const cp = this.toCameraPoint(p.wp, camera);
+      const xy = this.toXyPoint(cp);
+      camera.points.push({ wp, cp, xy, id: p.id });
+    }
+
     for (const f of this.faces)
       f.draw(this.position, points, this.color, camera);
   }
   toLocalPoint(p) {
+    if (!this.rotation) return;
     let r = p;
     for (const a of "yxz")
       if (this.rotation[a]) r = this.rotate(r, this.rotation, a);
@@ -644,6 +664,8 @@ class Face extends GameObject {
     return c;
   }
   draw(parentPosition, points, color, camera) {
+    if (points.length !== camera.points.length) return;
+    //console.assert(points.length === camera.points.length, "Bad points");
     const fp = this.getFacePoints(points);
 
     // calculate 2 face vectors to describe the plane of the face
@@ -894,21 +916,6 @@ class Sphere extends GameObject {
     }
     this.faces.push(new Face([(h - 1) * v, (h - 2) * v + 1, (h - 1) * v + 1])); // south pole point
   }
-  draw(camera) {
-    //view.fillStyle = "white";
-    const points = [];
-    let c = 0;
-    for (const p of this.model) {
-      //const lp = this.toLocalPoint(p);
-      const wp = this.toWorldPoint(p); // lp
-      const cp = this.toCameraPoint(wp, camera);
-      const xy = this.toXyPoint(cp);
-      points.push({ wp, cp, xy });
-      ++c;
-    }
-    for (const f of this.faces)
-      f.draw(this.position, points, this.color, camera);
-  }
   setPixel(p) {
     if (p)
       view.fillRect(
@@ -1072,18 +1079,6 @@ class Cylinder extends GameObject {
       this.faces.push(new Face([i, i + 1, i + s + 1, i + s]));
     this.faces.push(new Face([s, 1, s + 1, s * 2]));
   }
-  draw(camera) {
-    const points = [];
-    for (const p of this.model) {
-      //const lp = this.toLocalPoint(p);
-      const wp = this.toWorldPoint(p); // lp
-      const cp = this.toCameraPoint(wp, camera);
-      const xy = this.toXyPoint(cp);
-      points.push({ wp, cp, xy, id: p.id });
-    }
-    for (const f of this.faces)
-      f.draw(this.position, points, this.color, camera);
-  }
   text(t, p) {
     view.fillStyle = "red";
     view.font = "18px Arial";
@@ -1127,20 +1122,6 @@ class Cube extends GameObject {
     //this.auto = { /*x: Math.random() * maxRotate - maxOffset,*/ y: Math.random() * maxRotate - maxOffset/*, z: Math.random() * maxRotate - maxOffset*/ };
     this.auto = { x: 0, y: 0.01, z: 0 };
   }
-  // draw(camera) {
-  //     if (this.auto?.x) this.rotation.x += this.auto.x;
-  //     if (this.auto?.y) this.rotation.y += this.auto.y;
-  //     if (this.auto?.z) this.rotation.z += this.auto.z;
-  //     const points = [];
-  //     for (let i = 0; i < this.model.length; ++i) {
-  //         const lp = this.toLocalPoint(this.model[i]);
-  //         const wp = this.toWorldPoint(lp);
-  //         const cp = this.toCameraPoint(wp, camera);
-  //         const xy = this.toXyPoint(cp);
-  //         points.push({ wp, cp, xy });
-  //     }
-  //     for(const f of this.faces) f.draw(this.position, points, this.color, camera);
-  // }
 }
 class Pyramid extends GameObject {
   color = rndColor();
@@ -1184,15 +1165,11 @@ class Wedge extends GameObject {
     new Face([0, 5, 1]),
     new Face([3, 2, 4]),
   ];
-  constructor(x, y, z, s = 1, sx = 1, sy = 1, sz = 1) {
-    super(x, y, z, s, sx, sy, sz);
-    //for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz }
-  }
 }
 class Triangle extends GameObject {
+  color = [255, 255, 0];
   model = [new Pt(-1, -1, 0), new Pt(1, -1, 0), new Pt(1, 1, 0)];
   faces = [new Face([0, 1, 2], true)];
-  color = [255, 255, 0];
 }
 class PointLight extends GameObject {
   radius = 1000;
@@ -1519,7 +1496,7 @@ class Rotation {
     return this.#direction;
   }
 }
-class Camera {
+class Camera extends GameObject {
   forwardVector = { x: 0, y: 0, z: 1 };
   rightVector = { x: 1, y: 0, z: 0 };
   upVector = { x: 0, y: 1, z: 0 };
@@ -1528,9 +1505,10 @@ class Camera {
   max = 500;
   min = 1;
   fov = 0;
-  constructor(x = 0, y = 0, z = 0) {
-    this.position = { x, y, z };
-  }
+  // constructor(x = 0, y = 0, z = 0) {
+  //   super();
+  //   //this.position = { x, y, z };
+  // }
   get heading() {
     return {
       x: -Math.sin(-this.rotation.y),
@@ -1619,6 +1597,9 @@ class Scene {
     this.lights.push(l);
     this.add(l);
   }
+  update() {
+    for (const o of this.objects) if (o.update) o.update();
+  }
   draw(camera) {
     if (this.animate) {
       view.clearRect(
@@ -1656,7 +1637,9 @@ const peg = new ParticleEmitter(0, -9, 70);
 const pyramid2 = new Pyramid(0, -10, 70);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
 const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
+sphere.auto.x = 0.02;
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
+cylinder.auto.y = 0.03;
 const pyramid = new Pyramid(0, -10, -50, 1, 1, 10);
 const wedge = new Wedge(-3, 0, 0, 1, 1, 1);
 const sphere2 = new Sphere(0, 0, 20, 16);
@@ -1771,6 +1754,7 @@ function animate() {
     scene.add(bullet);
   }
   //#endregion
+  scene.update();
   scene.draw(camera);
   if (gameSettings.showCrossHair) {
     const oldStroke = view.strokeStyle;
