@@ -530,6 +530,18 @@ class GameObject {
         return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z };
     }
   }
+  rotateX(p, angle) { 
+    const cos = Math.cos(angle); const sin = Math.sin(angle);
+    return { x: p.x, y: p.y * cos - p.z * sin, z: p.y * sin + p.z * cos };
+  }
+  rotateY(p, angle) { 
+    const cos = Math.cos(angle); const sin = Math.sin(angle);
+    return { x: p.x * cos - p.z * sin, y: p.y, z: p.x * sin + p.z * cos };
+  }
+  rotateZ(p, angle) { 
+    const cos = Math.cos(angle); const sin = Math.sin(angle);
+    return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z }; 
+  }
   rotateV(p, v, a) {
     return rotatePointAroundVector(p, v, a);
   }
@@ -572,6 +584,11 @@ class GameObject {
   }
   dot(p) {
     if (p) view.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  text(t, p) {
+    view.fillStyle = "lime";
+    view.font = "18px Arial";
+    if (p) view.fillText(t, p.x, p.y);
   }
 }
 class MultiFace extends GameObject {
@@ -759,11 +776,6 @@ class Face extends GameObject {
     this.drawFace(fp);
     //this.text(this.id, fp[1].xy);
   }
-  text(t, p) {
-    view.fillStyle = "red";
-    view.font = "18px Arial";
-    if (p) view.fillText(t, p.x, p.y);
-  }
   blendColors(color, light, strength = 0.5) {
     strength = clamp(strength);
     const dr = (light.color[0] - color[0]) * strength;
@@ -797,7 +809,10 @@ class Face extends GameObject {
   drawFace(points) {
     view.beginPath();
     this.drawLines(points);
-    //view.stroke();
+    const oldStroke  = view.strokeStyle;
+    view.strokeStyle = "black";
+    view.stroke();
+    view.strokeStyle = oldStroke;
     if (gameSettings.doubleDraw) this.drawLines(points, 1);
     view.fill();
 
@@ -825,6 +840,9 @@ class Face extends GameObject {
     this.moveTo(cpCenter);
     this.lineTo(cpNormalEnd);
     view.stroke();
+  }
+  distance(camera) {
+
   }
   get side() {
     return Face.sides[this.id];
@@ -1170,6 +1188,110 @@ class Triangle extends GameObject {
   color = [255, 255, 0];
   model = [new Pt(-1, -1, 0), new Pt(1, -1, 0), new Pt(1, 1, 0)];
   faces = [new Face([0, 1, 2], true)];
+}
+class Torus extends GameObject {
+    color = rndColor();
+    model =  [];
+    faces = [];
+    constructor(x, y, z, rT = 1, rC = 0.5, segT = 8, segC = 8) {
+        super(x, y, z);
+
+        // consider a torus as a cylinder evenly curved around so the ends meet up
+
+        const stepRC = Math.PI * 2 / segC; // step around axis of cylinder
+        const stepRT = Math.PI * 2 / segT; // step around axis of torus
+        const np = { x: 0, y: rC, z: 0 };
+
+        const points = [];
+
+        // calculate first circle/slice around surface of torus
+        for (let i = 0; i < segC; i++) {
+          const angleRC = i * stepRC;
+          const rp = this.rotateZ(np, angleRC);
+          rp.x += rT; // move (translate) point to the 'right' by the radius of the torus
+          points.push(rp);
+          this.model.push(rp);
+        }
+
+        // rotate first slice around a circle to calculate all torus surface points
+        for (let i = 1; i < segT; i++) {
+          for (const p of points) {
+            const rp = this.rotateY(p, stepRT * i);
+            this.model.push(rp);
+          }
+        }
+
+        // this.faces.push(new Face([0, 1, 9, 8]));
+        // this.faces.push(new Face([1, 2, 10, 9]));
+        // this.faces.push(new Face([2, 3, 11, 10]));
+        // this.faces.push(new Face([3, 4, 12, 11]));
+        // this.faces.push(new Face([4, 5, 13, 12]));
+        // this.faces.push(new Face([5, 6, 14, 13]));
+        // this.faces.push(new Face([6, 7, 15, 14]));
+        // this.faces.push(new Face([7, 0, 8, 15]));
+
+        for (let i = 0; i < segT - 1; i++) {
+          for (let j = 0; j < segC; j++) {
+            const slice = i * segT;
+            const a = j + slice;
+            const b = ((j + 1) % segC) + slice;
+            const c = (segC + (( j + 1) % segC)) + slice;
+            const d = (segC + j + slice) % (segC * segT);
+            console.log(a, b, c, d);
+            this.faces.push(new Face([a, b, c, d]));
+          }
+        }
+
+        this.faces.push(new Face([56, 57, 1, 0]));
+        this.faces.push(new Face([57, 58, 2, 1]));
+        this.faces.push(new Face([58, 59, 3, 2]));
+        this.faces.push(new Face([59, 60, 4, 3]));
+        this.faces.push(new Face([60, 61, 5, 4]));
+        this.faces.push(new Face([61, 62, 6, 5]));
+        this.faces.push(new Face([62, 63, 7, 6]));
+        this.faces.push(new Face([63, 56, 0, 7])); 
+
+
+        for (let i = 0; i < this.model.length; ++i) this.model[i].id = i;
+    }
+    draw(camera) {
+      const points = [];
+      for (const p of this.model) {
+        const lp = this.toLocalPoint(p);
+        const wp = this.toWorldPoint(lp); // lp
+        const cp = this.toCameraPoint(wp, camera);
+        const xy = this.toXyPoint(cp);
+        points.push({ wp, cp, xy, id: p.id });
+      }
+  
+      camera.points = [];
+      for (const p of this.points) {
+        const wp = { x: p.wp.x, y: p.wp.y, z: p.wp.z };
+        const cp = this.toCameraPoint(p.wp, camera);
+        const xy = this.toXyPoint(cp);
+        camera.points.push({ wp, cp, xy, id: p.id });
+      }
+
+      // sort faces in descending order of distance from camera
+      for (const f of this.faces) {
+        const i = f.verts[0];
+        const p = this.points[i].wp;
+        f.distanceFromCamera = distSquared(camera.position, p);
+      }
+      this.faces.sort((a, b) => b.distanceFromCamera - a.distanceFromCamera);
+  
+      for (const f of this.faces)
+        f.draw(this.position, points, this.color, camera);
+  
+
+      for (const p of camera.points) {
+        this.dot(p.xy);
+        this.text(p.id, p.xy);
+      }
+    }
+}
+function distSquared(p1, p2) {
+  return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2;
 }
 class PointLight extends GameObject {
   radius = 1000;
@@ -1550,7 +1672,7 @@ class Camera extends GameObject {
   moveRight(dist) {
     //const forwardVector = this.direction;
     const rightVector = this.rightDirection; // { x: forwardVector.z, y: forwardVector.y, z: -forwardVector.x };
-    const moveVector = multiplyVector(rightVector, dist);
+    const moveVector = multiplyVector(rightVector, dist / 10);
     Object.assign(this.position, addVector(this.position, moveVector));
   }
   moveLeft(dist) {
@@ -1632,7 +1754,7 @@ lightSource1.color = [255, 255, 0];
 const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
-camera = new Camera(0, 0, 50);
+camera = new Camera(0, 0, 80);
 const peg = new ParticleEmitter(0, -9, 70);
 const pyramid2 = new Pyramid(0, -10, 70);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
@@ -1646,6 +1768,11 @@ const sphere2 = new Sphere(0, 0, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
 const tri1 = new Triangle(0, 0, -50);
 const simple = new SimpleSphere(5, 0, 20);
+
+const pyramid3 = new Pyramid(0, -10, 100, 1, 1, 1);
+const torus = new Torus(0, 0, 100);
+//torus.auto.y = 0.01;
+torus.auto.z = 0.01;
 //#endregion
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
 const scene = new Scene(plane);
@@ -1701,19 +1828,22 @@ gui.add(peg, "gravity", -0.1, 0);
 gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
-scene.add(cube);
-scene.add(sphere);
-scene.add(cylinder);
-scene.add(pyramid);
-scene.add(wedge);
-scene.add(sphere2);
-//scene.add(sphere3);
+// scene.add(cube);
+// scene.add(sphere);
+// scene.add(cylinder);
+// scene.add(pyramid);
+// scene.add(wedge);
+// scene.add(sphere2);
+// //scene.add(sphere3);
 scene.addLight(lightSource1);
-scene.addLight(lightSource2);
-scene.add(tri1);
-scene.add(simple);
-scene.add(peg);
-scene.add(pyramid2);
+// scene.addLight(lightSource2);
+// scene.add(tri1);
+// scene.add(simple);
+// scene.add(peg);
+// scene.add(pyramid2);
+
+scene.add(pyramid3);
+scene.add(torus);
 //scene.add(spotlight1);
 
 //for(let i = 0; i < 100; ++i) scene.add(new Cube());
@@ -1724,7 +1854,7 @@ cube.connect(wedge);
 //#region Animate
 function animate() {
   //#region Game Input
-  const delta = 1;
+  const delta = 0.1;
   if (GameInput.isForward) camera.moveForward(delta);
   if (GameInput.isBack) camera.moveBack(delta);
   if (GameInput.isRight) camera.moveRight(delta);
