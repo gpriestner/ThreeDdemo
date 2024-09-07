@@ -3,7 +3,6 @@ const canvas = document.createElement("canvas"); // document.querySelector("canv
 document.body.appendChild(canvas);
 const view = canvas.getContext("2d");
 canvas.view = view;
-view.font = "28px Arial";
 
 let camera;
 
@@ -83,36 +82,19 @@ class Mouse {
   })();
 }
 class GameInput {
-  static get isForward() {
-    return Keyboard.isDown("KeyW") || Mouse.LeftDown;
-  }
-  static get isLeft() {
-    return Keyboard.isDown("KeyA");
-  }
-  static get isRight() {
-    return Keyboard.isDown("KeyD");
-  }
-  static get isTurnLeft() {
-    return Keyboard.isDown("ArrowLeft");
-  }
-  static get isTurnRight() {
-    return Keyboard.isDown("ArrowRight");
-  }
-  static get isBack() {
-    return Keyboard.isDown("KeyS") || Mouse.RightDown;
-  }
-  static get isUp() {
-    return Keyboard.isDown("ArrowUp");
-  }
-  static get isDown() {
-    return Keyboard.isDown("ArrowDown");
-  }
-  static get isReset() {
-    return Keyboard.isPressed("KeyR");
-  }
-  static get isFire() {
-    return Keyboard.isPressed("KeyF");
-  }
+  static get Forward() { return Keyboard.isDown("KeyW") || Mouse.LeftDown; }
+  static get Left() { return Keyboard.isDown("KeyA"); }
+  static get Right() { return Keyboard.isDown("KeyD"); }
+  static get TurnLeft() { return Keyboard.isDown("ArrowLeft"); }
+  static get TurnRight() { return Keyboard.isDown("ArrowRight"); }
+  static get Back() { return Keyboard.isDown("KeyS") || Mouse.RightDown; }
+  static get Up() { return Keyboard.isDown("ArrowUp"); }
+  static get Down() { return Keyboard.isDown("ArrowDown"); }
+  static get Reset() { return Keyboard.isPressed("KeyR"); }
+  static get Fire() { return Keyboard.isPressed("KeyF"); }
+  static get North() { return Keyboard.isDown("Digit2"); }
+  static get South() { return Keyboard.isDown("KeyZ"); }
+  static get Control() { return Keyboard.isPressed("ControlLeft"); }
 }
 //#endregion
 //#region Resize handler
@@ -136,6 +118,7 @@ function setupView(canvas) {
   canvas.view.lineJoin = "bevel";
   canvas.view.shadowOffsetX = 1;
   canvas.view.shadowOffsetY = 1;
+  canvas.view.font = "18px Arial";
 }
 //resize();
 addEventListener("resize", resize);
@@ -427,6 +410,13 @@ class GameSettings {
   selectFace = true;
   crossHairRadius = 20;
   flyMode = true;
+  #debugColor = [255, 255, 255];
+  get debugColor() { return this.#debugColor; }
+  set debugColor(c) {
+    this.#debugColor = c;
+    this.textColor = arrayToColor(c);
+  }
+  textColor = "white";
 }
 const gameSettings = new GameSettings();
 class GameObject {
@@ -585,10 +575,10 @@ class GameObject {
   dot(p) {
     if (p) view.fillRect(p.x - 2, p.y - 2, 4, 4);
   }
-  text(t, p) {
-    view.fillStyle = "lime";
-    view.font = "18px Arial";
-    if (p) view.fillText(t, p.x, p.y);
+  text(t, p, camera) {
+    view.fillStyle = gameSettings.textColor; // "lime";
+    //view.font = "18px Arial";
+    if (t && p) view.fillText(t, p.x, p.y);
   }
 }
 class MultiFace extends GameObject {
@@ -754,7 +744,7 @@ class Face extends GameObject {
       view.strokeStyle = strColor;
       this.drawFace(fp);
       view.shadowColor = "rgba(0,0,0,0)";
-      for (const p of fp) if (p.id && p.xy) this.text(p.id, p.xy);
+      for (const p of fp) if (p.id && p.xy) this.text(p.id, p.xy, camera);
 
       //drawSkew(testImage, xy[0], xy[1], xy[2], xy[3]);
 
@@ -811,7 +801,7 @@ class Face extends GameObject {
     this.drawLines(points);
     const oldStroke  = view.strokeStyle;
     view.strokeStyle = "black";
-    view.stroke();
+    //view.stroke();
     view.strokeStyle = oldStroke;
     if (gameSettings.doubleDraw) this.drawLines(points, 1);
     view.fill();
@@ -1230,29 +1220,29 @@ class Torus extends GameObject {
         // this.faces.push(new Face([6, 7, 15, 14]));
         // this.faces.push(new Face([7, 0, 8, 15]));
 
-        for (let i = 0; i < segT - 1; i++) {
+        for (let i = 0; i < segT; i++) {
           for (let j = 0; j < segC; j++) {
             const slice = i * segT;
             const a = j + slice;
             const b = ((j + 1) % segC) + slice;
-            const c = (segC + (( j + 1) % segC)) + slice;
+            const c = ((segC + (( j + 1) % segC)) + slice) % (segC * segT);
             const d = (segC + j + slice) % (segC * segT);
             console.log(a, b, c, d);
             this.faces.push(new Face([a, b, c, d]));
           }
         }
 
-        this.faces.push(new Face([56, 57, 1, 0]));
-        this.faces.push(new Face([57, 58, 2, 1]));
-        this.faces.push(new Face([58, 59, 3, 2]));
-        this.faces.push(new Face([59, 60, 4, 3]));
-        this.faces.push(new Face([60, 61, 5, 4]));
-        this.faces.push(new Face([61, 62, 6, 5]));
-        this.faces.push(new Face([62, 63, 7, 6]));
-        this.faces.push(new Face([63, 56, 0, 7])); 
+        // this.faces.push(new Face([56, 57, 1, 0]));
+        // this.faces.push(new Face([57, 58, 2, 1]));
+        // this.faces.push(new Face([58, 59, 3, 2]));
+        // this.faces.push(new Face([59, 60, 4, 3]));
+        // this.faces.push(new Face([60, 61, 5, 4]));
+        // this.faces.push(new Face([61, 62, 6, 5]));
+        // this.faces.push(new Face([62, 63, 7, 6]));
+        // this.faces.push(new Face([63, 56, 0, 7])); 
 
 
-        for (let i = 0; i < this.model.length; ++i) this.model[i].id = i;
+        //for (let i = 0; i < this.model.length; ++i) this.model[i].id = i;
     }
     draw(camera) {
       const points = [];
@@ -1284,10 +1274,10 @@ class Torus extends GameObject {
         f.draw(this.position, points, this.color, camera);
   
 
-      for (const p of camera.points) {
-        this.dot(p.xy);
-        this.text(p.id, p.xy);
-      }
+      // for (const p of camera.points) {
+      //   this.dot(p.xy);
+      //   this.text(p.id, p.xy);
+      // }
     }
 }
 function distSquared(p1, p2) {
@@ -1672,11 +1662,15 @@ class Camera extends GameObject {
   moveRight(dist) {
     //const forwardVector = this.direction;
     const rightVector = this.rightDirection; // { x: forwardVector.z, y: forwardVector.y, z: -forwardVector.x };
-    const moveVector = multiplyVector(rightVector, dist / 10);
+    const moveVector = multiplyVector(rightVector, dist);
     Object.assign(this.position, addVector(this.position, moveVector));
   }
   moveLeft(dist) {
     this.moveRight(-dist);
+  }
+  moveNorth(dist) {
+    const moveVector = multiplyVector(this.heading, dist);
+    Object.assign(this.position, addVector(this.position, moveVector));
   }
   moveUp(dist = 1) {
     this.position.y += 0.1 * dist;
@@ -1770,14 +1764,15 @@ const tri1 = new Triangle(0, 0, -50);
 const simple = new SimpleSphere(5, 0, 20);
 
 const pyramid3 = new Pyramid(0, -10, 100, 1, 1, 1);
-const torus = new Torus(0, 0, 100);
+const torus = new Torus(0, 0, 100, 5, 2, 5, 5);
 //torus.auto.y = 0.01;
-torus.auto.z = 0.01;
+//torus.auto.z = 0.01;
 //#endregion
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
 const scene = new Scene(plane);
 //#region DatGui
 const gui = new dat.GUI();
+gui.addColor(gameSettings, "debugColor").name("Debug Color");
 
 const cubeFolder = gui.addFolder("Cube");
 cubeFolder.add(cube, "scale", 1, 25).name("Scale");
@@ -1852,27 +1847,28 @@ scene.add(torus);
 cube.connect(wedge);
 //#endregion
 //#region Animate
+let delta = 0.1;
 function animate() {
   //#region Game Input
-  const delta = 0.1;
-  if (GameInput.isForward) camera.moveForward(delta);
-  if (GameInput.isBack) camera.moveBack(delta);
-  if (GameInput.isRight) camera.moveRight(delta);
-  if (GameInput.isLeft) camera.moveLeft(delta);
-  if (GameInput.isTurnRight) {
+  if (GameInput.Control) delta = (delta == 0.1) ? 0.01: 0.1;
+  if (GameInput.Forward) camera.moveForward(delta);
+  if (GameInput.Back) camera.moveBack(delta);
+  if (GameInput.Right) camera.moveRight(delta);
+  if (GameInput.Left) camera.moveLeft(delta);
+  if (GameInput.TurnRight) {
     camera.rotation.y += 0.01;
     xpos -= 25;
     canvas.style.backgroundPositionX = `${xpos}px`;
   }
-  if (GameInput.isTurnLeft) {
+  if (GameInput.TurnLeft) {
     camera.rotation.y -= 0.01;
     xpos += 25;
     canvas.style.backgroundPositionX = `${xpos}px`;
   }
-  if (GameInput.isUp) camera.moveUp(1);
-  if (GameInput.isDown) camera.moveDown(1);
-  if (GameInput.isReset) camera.reset();
-  if (GameInput.isFire) {
+  if (GameInput.Up) camera.moveUp(delta * 10);
+  if (GameInput.Down) camera.moveDown(delta * 10);
+  if (GameInput.Reset) camera.reset();
+  if (GameInput.Fire) {
     const bullet = new SimpleSphere(
       camera.position.x,
       camera.position.y,
@@ -1883,6 +1879,8 @@ function animate() {
     bullet.scale = 0.2;
     scene.add(bullet);
   }
+  if (GameInput.North) camera.moveNorth(delta);
+  if (GameInput.South) camera.moveNorth(-delta); 
   //#endregion
   scene.update();
   scene.draw(camera);
