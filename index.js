@@ -1,10 +1,10 @@
 console.log("working. . . ");
-const canvas = document.createElement("canvas"); // document.querySelector("canvas");
-document.body.appendChild(canvas);
-const view = canvas.getContext("2d");
-canvas.view = view;
+// const canvas = document.createElement("canvas"); // document.querySelector("canvas");
+// document.body.appendChild(canvas);
+// const view = canvas.getContext("2d");
+// canvas.view = view;
 
-let camera;
+// let camera;
 
 const canvas2 = document.createElement("canvas");
 canvas2.style.position = "fixed";
@@ -12,12 +12,10 @@ canvas2.style.position = "fixed";
 document.body.appendChild(canvas2);
 canvas2.view = canvas2.getContext("2d");
 
-const canvases = [canvas, canvas2];
+//const canvases = [canvas, canvas2];
 
 const testImage = new Image();
 testImage.src = "res/profile.png";
-let xpos = 0;
-let ypos = 0;
 //#region Game Input
 class KeyState {
   isPressed;
@@ -69,12 +67,12 @@ class Mouse {
   static MiddleDown = false;
   static LeftDown = false;
   static #Mouse = (() => {
-    canvas.addEventListener("mousedown", (e) => {
+    addEventListener("mousedown", (e) => {
       if (e.button == 0) Mouse.LeftDown = true;
       if (e.button == 1) togglePointerLock();
       if (e.button == 2) Mouse.RightDown = true;
     });
-    canvas.addEventListener("mouseup", (e) => {
+    addEventListener("mouseup", (e) => {
       if (e.button == 0) Mouse.LeftDown = false;
       if (e.button == 1) Mouse.MiddleDown = false;
       if (e.button == 2) Mouse.RightDown = false;
@@ -99,6 +97,8 @@ class GameInput {
 //#endregion
 //#region Resize handler
 function resize() {
+  console.log("ERROR: do NOT call resize");
+  return;
   canvas.width = window.innerWidth / 2;
   canvas.height = window.innerHeight;
   setupView(canvas);
@@ -109,7 +109,26 @@ function resize() {
   canvas2.height = window.innerHeight;
   setupView(canvas2);
 }
-function setupView(canvas) {
+function resetCameras() {
+  console.assert(activeCamera, "There is no active camera");
+  setupCamera(activeCamera);
+}
+function setupCamera(camera) {
+  console.assert(camera.view, "Camera MUST have a view");
+  console.assert(camera.canvas, "Camera MUST have a canvas");
+  camera.canvas.width = window.innerWidth / 2;
+  camera.canvas.height = window.innerHeight;
+  camera.view.translate(camera.canvas.width / 2, camera.canvas.height / 2);
+  camera.view.scale(1, -1);
+  camera.view.lineWidth = 1;
+  camera.view.strokeStyle = "black";
+  camera.view.lineWidth = 4;
+  camera.view.lineJoin = "bevel";
+  camera.view.shadowOffsetX = 1;
+  camera.view.shadowOffsetY = 1;
+  camera.view.font = "18px Arial";
+}
+function setupView(canvas) { // NOT used
   canvas.view.translate(canvas.width / 2, canvas.height / 2);
   canvas.view.scale(1, -1);
   canvas.view.lineWidth = 1;
@@ -121,7 +140,8 @@ function setupView(canvas) {
   canvas.view.font = "18px Arial";
 }
 //resize();
-addEventListener("resize", resize);
+//addEventListener("resize", resize);
+addEventListener("resize", resetCameras);
 //#endregion
 //#region Pointer Lock
 document.addEventListener("pointerlockchange", onLockChange);
@@ -142,7 +162,7 @@ document.addEventListener("pointerlockchange", onLockChange);
 async function togglePointerLock() {
   //console.log("Toggle");
   if (!document.pointerLockElement) {
-    await canvas.requestPointerLock({
+    await activeCamera.canvas.requestPointerLock({
       unadjustedMovement: true,
     });
   } else {
@@ -150,34 +170,35 @@ async function togglePointerLock() {
   }
 }
 function onLockChange() {
-  if (document.pointerLockElement === canvas)
+  if (document.pointerLockElement === activeCamera.canvas)
     document.addEventListener("mousemove", updatePosition);
   else document.removeEventListener("mousemove", updatePosition);
 }
 function updatePosition(e) {
   const dx = -e.movementX * 1.3;
   const dy = -e.movementY * 1.3;
-  xpos += dx;
-  ypos += dy;
-  canvas.style.backgroundPositionX = `${xpos}px`;
+  activeCamera.canvas.backgroundPosition.x += dx;
+  activeCamera.canvas.backgroundPosition.y += dy;
+  activeCamera.canvas.style.backgroundPositionX = `${activeCamera.canvas.backgroundPosition.x}px`;
 
-  camera.rotation.x -= e.movementY / 1000; // look up/down
-  if (camera.rotation.x < -Math.PI / 2) camera.rotation.x = -Math.PI / 2;
-  else if (camera.rotation.x > Math.PI / 2) camera.rotation.x = Math.PI / 2;
-  else canvas.style.backgroundPositionY = `${ypos}px`;
-  camera.rotation.y += e.movementX / 1000; // look left/right
+  activeCamera.rotation.x -= e.movementY / 1000; // look up/down
+  if (activeCamera.rotation.x < -Math.PI / 2) activeCamera.rotation.x = -Math.PI / 2;
+  else if (activeCamera.rotation.x > Math.PI / 2) activeCamera.rotation.x = Math.PI / 2;
+  else activeCamera.canvas.style.backgroundPositionY = `${activeCamera.canvas.backgroundPosition.y}px`;
+
+  activeCamera.rotation.y += e.movementX / 1000; // look left/right
 
   // spotlight1.direction.x += e.movementX / 1000;
   // spotlight1.direction.y -= e.movementY / 1000;
 
-  if (camera.rotation.x > Math.PI) camera.rotation.x -= Math.PI * 2;
-  if (camera.rotation.x < -Math.PI) camera.rotation.x += Math.PI * 2;
-  if (camera.rotation.y > Math.PI) camera.rotation.y -= Math.PI * 2;
-  if (camera.rotation.y < -Math.PI) camera.rotation.y += Math.PI * 2;
+  if (activeCamera.rotation.x > Math.PI) activeCamera.rotation.x -= Math.PI * 2;
+  if (activeCamera.rotation.x < -Math.PI) activeCamera.rotation.x += Math.PI * 2;
+  if (activeCamera.rotation.y > Math.PI) activeCamera.rotation.y -= Math.PI * 2;
+  if (activeCamera.rotation.y < -Math.PI) activeCamera.rotation.y += Math.PI * 2;
 }
 document.addEventListener("wheel", async (e) => {
-  if (e.deltaY) camera.moveUp(-e.deltaY / 20);
-  if (e.deltaX) camera.moveRight(e.deltaX / 100);
+  if (e.deltaY) activeCamera.moveUp(-e.deltaY / 20);
+  if (e.deltaX) activeCamera.moveRight(e.deltaX / 100);
 });
 //#endregion
 //#region Utility Functions
@@ -504,7 +525,7 @@ class GameObject {
   }
   toXyPoint(p) {
     if (p == null || p.z == 0) return null;
-    const xy = { x: (p.x / p.z) * canvas.width, y: (p.y / p.z) * canvas.width };
+    const xy = { x: (p.x / p.z) * activeCamera.canvas.width, y: (p.y / p.z) * activeCamera.canvas.width };
     return xy;
   }
   rotate(p, rotation, axis = "y") {
@@ -567,18 +588,18 @@ class GameObject {
       this.model[i] = addVector(this.model[i], this.parentOffset);
   }
   moveTo(p, o = 0) {
-    if (p) view.moveTo(p.x + o, p.y + o);
+    if (p) activeCamera.view.moveTo(p.x + o, p.y + o);
   }
   lineTo(p, o = 0) {
-    if (p) view.lineTo(p.x + o, p.y + o);
+    if (p) activeCamera.view.lineTo(p.x + o, p.y + o);
   }
   dot(p) {
-    if (p) view.fillRect(p.x - 2, p.y - 2, 4, 4);
+    if (p) activeCamera.view.fillRect(p.x - 2, p.y - 2, 4, 4);
   }
   text(t, p, camera) {
-    view.fillStyle = gameSettings.textColor; // "lime";
+    activeCamera.view.fillStyle = gameSettings.textColor; // "lime";
     //view.font = "18px Arial";
-    if (t && p) view.fillText(t, p.x, p.y);
+    if (t && p) activeCamera.view.fillText(t, p.x, p.y);
   }
 }
 class MultiFace extends GameObject {
@@ -739,11 +760,11 @@ class Face extends GameObject {
       //shadeFace(fp);
 
       let strColor = this.toRGB(color);
-      view.fillStyle = strColor;
-      view.shadowColor = view.fillStyle;
-      view.strokeStyle = strColor;
+      activeCamera.view.fillStyle = strColor;
+      activeCamera.view.shadowColor = activeCamera.view.fillStyle;
+      activeCamera.view.strokeStyle = strColor;
       this.drawFace(fp);
-      view.shadowColor = "rgba(0,0,0,0)";
+      activeCamera.view.shadowColor = "rgba(0,0,0,0)";
       for (const p of fp) if (p.id && p.xy) this.text(p.id, p.xy, camera);
 
       //drawSkew(testImage, xy[0], xy[1], xy[2], xy[3]);
@@ -760,9 +781,9 @@ class Face extends GameObject {
     let c = 0;
     for (const p of fp) if (!p.xy) return;
     let col = this.toRGB(color);
-    view.fillStyle = col;
-    //view.shadowColor = view.fillStyle;
-    view.strokeStyle = col;
+    activeCamera.view.fillStyle = col;
+    //activeCamera.view.shadowColor = view.fillStyle;
+    activeCamera.view.strokeStyle = col;
     this.drawFace(fp);
     //this.text(this.id, fp[1].xy);
   }
@@ -797,23 +818,23 @@ class Face extends GameObject {
     return diff < variance;
   }
   drawFace(points) {
-    view.beginPath();
+    activeCamera.view.beginPath();
     this.drawLines(points);
-    const oldStroke  = view.strokeStyle;
-    view.strokeStyle = "black";
-    //view.stroke();
-    view.strokeStyle = oldStroke;
-    if (gameSettings.doubleDraw) this.drawLines(points, 1);
-    view.fill();
+    //const oldStroke  = activeCamera.view.strokeStyle;
+    //activeCamera.view.strokeStyle = "black";
+    //activeCamera.view.stroke();
+    //activeCamera.view.strokeStyle = oldStroke;
+    //if (gameSettings.doubleDraw) this.drawLines(points, 1);
+    activeCamera.view.fill();
 
     if (
       gameSettings.selectFace &&
-      view.isPointInPath(canvas.width / 2, canvas.height / 2)
+      activeCamera.view.isPointInPath(activeCamera.canvas.width / 2, activeCamera.canvas.height / 2)
     ) {
-      const oldStroke = view.strokeStyle;
-      view.strokeStyle = "red";
-      view.stroke();
-      view.strokeStyle = oldStroke;
+      const oldStroke = activeCamera.view.strokeStyle;
+      activeCamera.view.strokeStyle = "red";
+      activeCamera.view.stroke();
+      activeCamera.view.strokeStyle = oldStroke;
     }
   }
   drawLines(points, o = 0) {
@@ -825,11 +846,11 @@ class Face extends GameObject {
     const cpCenter = this.toXyPoint(center);
     const normalEnd = addVector(center, camNormal);
     const cpNormalEnd = this.toXyPoint(normalEnd);
-    view.strokeStyle = "yellow";
-    view.beginPath();
+    activeCamera.view.strokeStyle = "yellow";
+    activeCamera.view.beginPath();
     this.moveTo(cpCenter);
     this.lineTo(cpNormalEnd);
-    view.stroke();
+    activeCamera.view.stroke();
   }
   distance(camera) {
 
@@ -926,7 +947,7 @@ class Sphere extends GameObject {
   }
   setPixel(p) {
     if (p)
-      view.fillRect(
+      activeCamera.view.fillRect(
         p.x - this.dotSize / 2,
         p.y - this.dotSize / 2,
         this.dotSize,
@@ -934,8 +955,8 @@ class Sphere extends GameObject {
       );
   }
   text(t, p) {
-    view.font = "18px Arial";
-    view.fillText(t, p.x, p.y);
+    activeCamera.view.font = "18px Arial";
+    activeCamera.view.fillText(t, p.x, p.y);
   }
 }
 class SimpleSphere extends GameObject {
@@ -978,12 +999,12 @@ class SimpleSphere extends GameObject {
           (xySphereCenter.y - xySphereEdge.y) ** 2
       );
       if (xyRadius > 1) {
-        view.fillStyle = arrayToColor(this.color);
-        view.beginPath();
-        view.arc(xySphereCenter.x, xySphereCenter.y, xyRadius, 0, Math.PI * 2);
-        view.fill();
+        activeCamera.view.fillStyle = arrayToColor(this.color);
+        activeCamera.view.beginPath();
+        activeCamera.view.arc(xySphereCenter.x, xySphereCenter.y, xyRadius, 0, Math.PI * 2);
+        activeCamera.view.fill();
 
-        view.globalCompositeOperation = "hard-light";
+        activeCamera.view.globalCompositeOperation = "hard-light";
         //const light = scene.lights[0];
         for (const light of scene.lights) {
           const lightVector = normaliseVector(
@@ -998,9 +1019,9 @@ class SimpleSphere extends GameObject {
           const cp = this.toCameraPoint(av, camera);
           const xySpecularCenter = this.toXyPoint(cp);
           if (xySpecularCenter) {
-            view.save();
-            view.clip();
-            const grad = view.createRadialGradient(
+            activeCamera.view.save();
+            activeCamera.view.clip();
+            const grad = activeCamera.view.createRadialGradient(
               xySpecularCenter.x,
               xySpecularCenter.y,
               xyRadius / distance,
@@ -1011,17 +1032,17 @@ class SimpleSphere extends GameObject {
             grad.addColorStop(0, arrayToColor(light.color));
             //grad.addColorStop(0, `rgba(${light.color[0]},${light.color[1]},${light.color[2]},0.5)`);
             grad.addColorStop(1, "rgba(255,255,255,0)");
-            view.fillStyle = grad;
-            view.fillRect(
+            activeCamera.view.fillStyle = grad;
+            activeCamera.view.fillRect(
               xySpecularCenter.x - xyRadius * 2,
               xySpecularCenter.y - xyRadius * 2,
               xyRadius * 4,
               xyRadius * 4
             );
-            view.restore();
+            activeCamera.view.restore();
           }
         }
-        view.globalCompositeOperation = "source-over";
+        activeCamera.view.globalCompositeOperation = "source-over";
       }
     }
   }
@@ -1088,9 +1109,9 @@ class Cylinder extends GameObject {
     this.faces.push(new Face([s, 1, s + 1, s * 2]));
   }
   text(t, p) {
-    view.fillStyle = "red";
-    view.font = "18px Arial";
-    if (p) view.fillText(t, p.x, p.y);
+    activeCamera.view.fillStyle = "red";
+    activeCamera.view.font = "18px Arial";
+    if (p) activeCamera.view.fillText(t, p.x, p.y);
   }
 }
 class Cube extends GameObject {
@@ -1211,15 +1232,6 @@ class Torus extends GameObject {
           }
         }
 
-        // this.faces.push(new Face([0, 1, 9, 8]));
-        // this.faces.push(new Face([1, 2, 10, 9]));
-        // this.faces.push(new Face([2, 3, 11, 10]));
-        // this.faces.push(new Face([3, 4, 12, 11]));
-        // this.faces.push(new Face([4, 5, 13, 12]));
-        // this.faces.push(new Face([5, 6, 14, 13]));
-        // this.faces.push(new Face([6, 7, 15, 14]));
-        // this.faces.push(new Face([7, 0, 8, 15]));
-
         for (let i = 0; i < segT; i++) {
           for (let j = 0; j < segC; j++) {
             const slice = i * segT;
@@ -1227,20 +1239,10 @@ class Torus extends GameObject {
             const b = ((j + 1) % segC) + slice;
             const c = ((segC + (( j + 1) % segC)) + slice) % (segC * segT);
             const d = (segC + j + slice) % (segC * segT);
-            console.log(a, b, c, d);
+            //console.log(a, b, c, d);
             this.faces.push(new Face([a, b, c, d]));
           }
         }
-
-        // this.faces.push(new Face([56, 57, 1, 0]));
-        // this.faces.push(new Face([57, 58, 2, 1]));
-        // this.faces.push(new Face([58, 59, 3, 2]));
-        // this.faces.push(new Face([59, 60, 4, 3]));
-        // this.faces.push(new Face([60, 61, 5, 4]));
-        // this.faces.push(new Face([61, 62, 6, 5]));
-        // this.faces.push(new Face([62, 63, 7, 6]));
-        // this.faces.push(new Face([63, 56, 0, 7])); 
-
 
         //for (let i = 0; i < this.model.length; ++i) this.model[i].id = i;
     }
@@ -1322,8 +1324,8 @@ class PointLight extends GameObject {
       const d = dist3d(this.position, camera.position);
       const radius = this.radius / d;
       if (radius > 0) {
-        const oldStyle = view.fillStyle;
-        const grad = view.createRadialGradient(
+        const oldStyle = activeCamera.view.fillStyle;
+        const grad = activeCamera.view.createRadialGradient(
           position.x,
           position.y,
           radius / 2,
@@ -1336,14 +1338,14 @@ class PointLight extends GameObject {
           `rgba(${this.color[0]},${this.color[1]},${this.color[2]}, 0.7)`
         );
         grad.addColorStop(1, "rgba(0,0,0,0)");
-        view.fillStyle = grad;
-        view.fillRect(
+        activeCamera.view.fillStyle = grad;
+        activeCamera.view.fillRect(
           position.x - radius,
           position.y - radius,
           radius * 2,
           radius * 2
         );
-        view.fillStyle = oldStyle;
+        activeCamera.view.fillStyle = oldStyle;
       }
     }
   }
@@ -1383,21 +1385,21 @@ class SpotLight extends GameObject {
     if (xyCenter && xyEdge) {
       const radius = xyEdge.x - xyCenter.x;
       if (radius > 0) {
-        const oldStyle = view.fillStyle;
-        view.fillStyle = this.color;
-        view.arc(xyCenter.x, xyCenter.y, radius, 0, Math.PI * 2);
-        view.fill();
-        view.fillStyle = oldStyle;
+        const oldStyle = activeCamera.view.fillStyle;
+        activeCamera.view.fillStyle = this.color;
+        activeCamera.view.arc(xyCenter.x, xyCenter.y, radius, 0, Math.PI * 2);
+        activeCamera.view.fill();
+        activeCamera.view.fillStyle = oldStyle;
       }
-      view.lineWidth = 5;
-      const oldStroke = view.strokeStyle;
-      view.strokeStyle = this.color;
-      view.beginPath();
+      activeCamera.view.lineWidth = 5;
+      const oldStroke = activeCamera.view.strokeStyle;
+      activeCamera.view.strokeStyle = this.color;
+      activeCamera.view.beginPath();
       this.moveTo(xyCenter);
       this.lineTo(xy);
-      view.stroke();
-      view.strokeStyle = oldStroke;
-      view.lineWidth = 1;
+      activeCamera.view.stroke();
+      activeCamera.view.strokeStyle = oldStroke;
+      activeCamera.view.lineWidth = 1;
     }
   }
 }
@@ -1457,15 +1459,15 @@ class Particle {
         const fadePoint = this.lifetime * this.fadeOut;
         this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 1;
         const color = arrayToColorA(this.color);
-        const oldFillStyle = view.fillStyle;
-        //view.fillStyle = color;
+        const oldFillStyle = activeCamera.view.fillStyle;
+        //activeCamera.view.fillStyle = color;
         //view.fillRect(xy.x, xy.y, this.size, this.size);
 
         // view.beginPath();
         // view.arc(xy.x, xy.y, this.size, 0, Math.PI * 2);
         // view.fill();
 
-        const grad = view.createRadialGradient(
+        const grad = activeCamera.view.createRadialGradient(
           xy.x,
           xy.y,
           0,
@@ -1476,15 +1478,15 @@ class Particle {
         grad.addColorStop(0, color);
         const colorStop = `rgba(${this.color[0]},${this.color[1]},${this.color[2]},0)`;
         grad.addColorStop(1, colorStop);
-        view.fillStyle = grad;
-        view.fillRect(
+        activeCamera.view.fillStyle = grad;
+        activeCamera.view.fillRect(
           xy.x - this.size,
           xy.y - this.size,
           this.size * 2,
           this.size * 2
         );
 
-        view.fillStyle = oldFillStyle;
+        activeCamera.view.fillStyle = oldFillStyle;
       }
     }
   }
@@ -1501,7 +1503,7 @@ class Particle {
   }
   toXyPoint(p) {
     if (p == null || p.z == 0) return null;
-    const xy = { x: (p.x / p.z) * canvas.width, y: (p.y / p.z) * canvas.width };
+    const xy = { x: (p.x / p.z) * activeCamera.canvas.width, y: (p.y / p.z) * activeCamera.canvas.width };
     return xy;
   }
   rotate(p, rotation, axis = "y") {
@@ -1544,9 +1546,9 @@ class ParticleEmitter {
         if (Math.random() < this.rate) this.particles.push(this.newParticle());
       }
 
-      const oldFillStyle = view.fillStyle;
+      const oldFillStyle = activeCamera.view.fillStyle;
       for (const p of this.particles) p.draw(camera);
-      view.fillStyle = oldFillStyle;
+      activeCamera.view.fillStyle = oldFillStyle;
       if (this.particles.length > 1000)
         this.particles = this.particles.filter((p) => p.ttl > 0);
     }
@@ -1617,10 +1619,15 @@ class Camera extends GameObject {
   max = 500;
   min = 1;
   fov = 0;
-  // constructor(x = 0, y = 0, z = 0) {
-  //   super();
-  //   //this.position = { x, y, z };
-  // }
+  static #cameraId = 0;
+  constructor(x = 0, y = 0, z = 0) {
+    super(x, y, z);
+    this.canvas = document.createElement("canvas");
+    this.canvas.backgroundPosition = { x: 0, y: 0 };
+    document.body.appendChild(this.canvas);
+    this.view = this.canvas.getContext("2d");
+    this.id = ++Camera.#cameraId;
+  }
   get heading() {
     return {
       x: -Math.sin(-this.rotation.y),
@@ -1718,11 +1725,11 @@ class Scene {
   }
   draw(camera) {
     if (this.animate) {
-      view.clearRect(
-        -canvas.width / 2,
-        -canvas.height / 2,
-        canvas.width,
-        canvas.height
+      activeCamera.view.clearRect(
+        -activeCamera.canvas.width / 2,
+        -activeCamera.canvas.height / 2,
+        activeCamera.canvas.width,
+        activeCamera.canvas.height
       );
       if (this.plane) this.plane.draw(camera);
       this.sort(camera);
@@ -1734,11 +1741,11 @@ class Scene {
   }
   clear() {
     if (this.animate)
-      view.clearRect(
-        -canvas.width / 2,
-        -canvas.height / 2,
-        canvas.width,
-        canvas.height
+      activeCamera.view.clearRect(
+        -activeCamera.canvas.width / 2,
+        -activeCamera.canvas.height / 2,
+        activeCamera.canvas.width,
+        activeCamera.canvas.height
       );
   }
 }
@@ -1748,7 +1755,8 @@ lightSource1.color = [255, 255, 0];
 const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
-camera = new Camera(0, 0, 80);
+
+let activeCamera = new Camera(0, 0, 80);
 const peg = new ParticleEmitter(0, -9, 70);
 const pyramid2 = new Pyramid(0, -10, 70);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
@@ -1805,16 +1813,16 @@ sphereRotation.add(sphere.rotation, "z", -Math.PI, Math.PI);
 // light.add(spotlight1, "dpVariance", 0, 0.1);
 // light.add(spotlight1, "strength", 0, 10);
 const cam = gui.addFolder("Camera");
-cam.add(camera, "max", 0, 1000);
-cam.add(camera, "min", 0, 25);
-cam.add(camera, "fov", -1, 1);
+cam.add(activeCamera, "max", 0, 1000);
+cam.add(activeCamera, "min", 0, 25);
+cam.add(activeCamera, "fov", -1, 1);
 const camRotation = cam.addFolder("Rotation");
 const camPosition = cam.addFolder("Position");
-camRotation.add(camera.rotation, "x", -1.5, 1.5).listen();
-camRotation.add(camera.rotation, "y", -1.5, 1.5).listen();
-camPosition.add(camera.position, "x", -100, 100).listen();
-camPosition.add(camera.position, "y", -100, 100).listen();
-camPosition.add(camera.position, "z", -100, 100).listen();
+camRotation.add(activeCamera.rotation, "x", -1.5, 1.5).listen();
+camRotation.add(activeCamera.rotation, "y", -1.5, 1.5).listen();
+camPosition.add(activeCamera.position, "x", -100, 100).listen();
+camPosition.add(activeCamera.position, "y", -100, 100).listen();
+camPosition.add(activeCamera.position, "z", -100, 100).listen();
 gui.add(scene, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
 gui.add(gameSettings, "showCrossHair").name("Crosshair");
@@ -1823,19 +1831,19 @@ gui.add(peg, "gravity", -0.1, 0);
 gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
-// scene.add(cube);
-// scene.add(sphere);
-// scene.add(cylinder);
-// scene.add(pyramid);
-// scene.add(wedge);
-// scene.add(sphere2);
+scene.add(cube);
+scene.add(sphere);
+scene.add(cylinder);
+scene.add(pyramid);
+scene.add(wedge);
+scene.add(sphere2);
 // //scene.add(sphere3);
 scene.addLight(lightSource1);
-// scene.addLight(lightSource2);
-// scene.add(tri1);
-// scene.add(simple);
-// scene.add(peg);
-// scene.add(pyramid2);
+scene.addLight(lightSource2);
+scene.add(tri1);
+scene.add(simple);
+scene.add(peg);
+scene.add(pyramid2);
 
 scene.add(pyramid3);
 scene.add(torus);
@@ -1851,56 +1859,57 @@ let delta = 0.1;
 function animate() {
   //#region Game Input
   if (GameInput.Control) delta = (delta == 0.1) ? 0.01: 0.1;
-  if (GameInput.Forward) camera.moveForward(delta);
-  if (GameInput.Back) camera.moveBack(delta);
-  if (GameInput.Right) camera.moveRight(delta);
-  if (GameInput.Left) camera.moveLeft(delta);
+  if (GameInput.Forward) activeCamera.moveForward(delta);
+  if (GameInput.Back) activeCamera.moveBack(delta);
+  if (GameInput.Right) activeCamera.moveRight(delta);
+  if (GameInput.Left) activeCamera.moveLeft(delta);
   if (GameInput.TurnRight) {
-    camera.rotation.y += 0.01;
-    xpos -= 25;
-    canvas.style.backgroundPositionX = `${xpos}px`;
-  }
+    activeCamera.rotation.y += 0.01;
+    activeCamera.canvas.backgroundPosition.x -= 13;
+    activeCamera.canvas.style.backgroundPositionX = `${activeCamera.canvas.backgroundPosition.x}px`;
+}
   if (GameInput.TurnLeft) {
-    camera.rotation.y -= 0.01;
-    xpos += 25;
-    canvas.style.backgroundPositionX = `${xpos}px`;
+    activeCamera.rotation.y -= 0.01;
+    activeCamera.canvas.backgroundPosition.x += 13;
+    activeCamera.canvas.style.backgroundPositionX = `${activeCamera.canvas.backgroundPosition.x}px`;
   }
-  if (GameInput.Up) camera.moveUp(delta * 10);
-  if (GameInput.Down) camera.moveDown(delta * 10);
-  if (GameInput.Reset) camera.reset();
+  if (GameInput.Up) activeCamera.moveUp(delta * 10);
+  if (GameInput.Down) activeCamera.moveDown(delta * 10);
+  if (GameInput.Reset) activeCamera.reset();
   if (GameInput.Fire) {
     const bullet = new SimpleSphere(
-      camera.position.x,
-      camera.position.y,
-      camera.position.z
+      activeCamera.position.x,
+      activeCamera.position.y,
+      activeCamera.position.z
     );
-    bullet.direction = camera.direction;
+    bullet.direction = activeCamera.direction;
     bullet.speed = 1;
     bullet.scale = 0.2;
     scene.add(bullet);
   }
-  if (GameInput.North) camera.moveNorth(delta);
-  if (GameInput.South) camera.moveNorth(-delta); 
+  if (GameInput.North) activeCamera.moveNorth(delta);
+  if (GameInput.South) activeCamera.moveNorth(-delta); 
   //#endregion
   scene.update();
-  scene.draw(camera);
+  scene.draw(activeCamera);
   if (gameSettings.showCrossHair) {
-    const oldStroke = view.strokeStyle;
-    const oldLineWidth = view.lineWidth;
-    view.lineWidth = 2;
-    view.beginPath();
-    view.strokeStyle = "white";
-    view.arc(0, 0, gameSettings.crossHairRadius - 2, 0, Math.PI * 2);
-    view.stroke();
-    view.strokeStyle = "black";
-    view.beginPath();
-    view.arc(0, 0, gameSettings.crossHairRadius, 0, Math.PI * 2);
-    view.stroke();
-    view.lineWidth = oldLineWidth;
-    view.strokeStyle = oldStroke;
+    const oldStroke = activeCamera.view.strokeStyle;
+    const oldLineWidth = activeCamera.view.lineWidth;
+    activeCamera.view.lineWidth = 2;
+    activeCamera.view.beginPath();
+    activeCamera.view.strokeStyle = "white";
+    activeCamera.view.arc(0, 0, gameSettings.crossHairRadius - 2, 0, Math.PI * 2);
+    activeCamera.view.stroke();
+    activeCamera.view.strokeStyle = "black";
+    activeCamera.view.beginPath();
+    activeCamera.view.arc(0, 0, gameSettings.crossHairRadius, 0, Math.PI * 2);
+    activeCamera.view.stroke();
+    activeCamera.view.lineWidth = oldLineWidth;
+    activeCamera.view.strokeStyle = oldStroke;
   }
   requestAnimationFrame(animate);
 }
-resize();
+//resize();
+resetCameras();
 requestAnimationFrame(animate);
 //#endregion
