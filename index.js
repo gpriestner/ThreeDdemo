@@ -103,6 +103,8 @@ class Face {
         const faceXyPoints = [];
         for (const i of this.i) faceXyPoints.push(xYpoints[i]);
 
+        for (const p of faceXyPoints) if (!p) return;
+
         // calculate 2 face vectors
         const vectorAB = subtractVector(faceWorldPoints[1], faceWorldPoints[0]);
         const vectorAC = subtractVector(faceWorldPoints[2], faceWorldPoints[0]);
@@ -160,11 +162,15 @@ class GameObject {
     }
     toCameraPoint(p, camera) {
         const cp = subtractVector(camera.position, p);
+        const cv = normalizeVector(cp);
+        const dp = dotProduct(cv, camera.direction);
+        if (dp < 0) return null;
         const ry = this.rotate(cp, camera.rotation, "y");
         const rx = this.rotate(ry, camera.rotation, "x");
         return rx;
     }
     toXyPoint(p) {
+      if (p == null) return null;
         const xyp = 
           p.z != 0 ? 
           {
@@ -267,7 +273,7 @@ class PointLight extends GameObject {
         const cp = this.toCameraPoint(wp, camera);
         const xy = this.toXyPoint(cp);
         if (xy) {
-            const dist = Math.sqrt(this.position.x ** 2 + this.position.y **2 + this.position.z ** 2);
+            const dist = Math.sqrt((this.position.x - camera.position.x) ** 2 + (this.position.y - camera.position.y) **2 + (this.position.z - camera.position.z) ** 2);
             const radius = this.raduis / dist;
             view.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
             view.beginPath();
@@ -285,14 +291,44 @@ class Scene {
     }
 }
 class Camera {
+  model = { x: 0, y: 0, z: 1 };
     constructor(x, y, z) {
+        //super();
         this.position = { x, y, z };
         this.rotation = { x: 0, y: 0 };
     }
+    get direction() {
+      const ry = this.rotate(this.model, this.rotation, "y");
+      const rx = this.rotate(ry, this.rotation, "x");
+      return rx;
+    }
+    moveForward(dist) {
+      const moveVector = multiplyVector(this.direction, dist);
+      Object.assign(this.position, addVector(this.position, moveVector));
+    }
+    moveBack(dist) {
+      return this.moveForward(-dist);
+    }
+    rotate(p, rotation, axis) {
+      const angle = -rotation[axis];
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      switch(axis) {
+          case "x": return { x: p.x, y: p.y * cos - p.z * sin, z: p.y * sin + p.z * cos };
+          case "y": return { x: p.x * cos - p.z * sin, y: p.y, z: p.x * sin + p.z * cos };
+          case "z": return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z };
+      }
+  }
+}
+function multiplyVector(v, f) {
+  return { x: v.x *f, y: v.y * f, z: v.z * f };
+}
+function addVector(v1, v2) {
+  return { x: v1.x + v2.x, y: v1.y + v2.y, z: v1.z + v2.z };
 }
 const cube = new Cube(0, 0, 20, 2);
 const cube2 = new Cube(5, 5, 20, 2);
-const light = new PointLight(5, 5, 1);
+const light = new PointLight(0, 0, 1);
 const camera = new Camera(0, 0, 0);
 
 const scene = new Scene();
@@ -337,8 +373,8 @@ cameraRotation.add(camera.rotation, "y", -Math.PI, Math.PI);
 function animate() {
     if (Keyboard.isPressed("KeyA")) camera.position.x -= 0.2;
     if (Keyboard.isPressed("KeyD")) camera.position.x += 0.2;
-    if (Keyboard.isPressed("KeyW")) camera.position.z += 0.2;
-    if (Keyboard.isPressed("KeyS")) camera.position.z -= 0.2;
+    if (Keyboard.isPressed("KeyW")) camera.moveForward(0.1); // camera.position.z += 0.2;
+    if (Keyboard.isPressed("KeyS")) camera.moveBack(0.1); // camera.position.z -= 0.2;
     if (Keyboard.isPressed("ArrowUp")) camera.position.y += 0.2;
     if (Keyboard.isPressed("ArrowDown")) camera.position.y -= 0.2;
     scene.draw(camera);
