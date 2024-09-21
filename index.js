@@ -6,13 +6,11 @@ console.log("working. . . ");
 
 // let camera;
 
-const canvas2 = document.createElement("canvas");
-canvas2.style.position = "fixed";
-//canvas2.style.left = "1000px";
-document.body.appendChild(canvas2);
-canvas2.view = canvas2.getContext("2d");
-
-//const canvases = [canvas, canvas2];
+// const canvas2 = document.createElement("canvas");
+// canvas2.style.position = "fixed";
+// //canvas2.style.left = "1000px";
+// document.body.appendChild(canvas2);
+// canvas2.view = canvas2.getContext("2d");
 
 const testImage = new Image();
 testImage.src = "res/profile.png";
@@ -89,10 +87,13 @@ class GameInput {
   static get Up() { return Keyboard.isDown("ArrowUp"); }
   static get Down() { return Keyboard.isDown("ArrowDown"); }
   static get Reset() { return Keyboard.isPressed("KeyR"); }
-  static get Fire() { return Keyboard.isPressed("KeyF"); }
-  static get North() { return Keyboard.isDown("Digit2"); }
+  static get Fire() { return Keyboard.isPressed("Space"); }
+  static get North() { return Keyboard.isDown("KeyQ"); }
   static get South() { return Keyboard.isDown("KeyZ"); }
   static get Control() { return Keyboard.isPressed("ControlLeft"); }
+  static get Camera1() { return Keyboard.isPressed("Digit1"); }
+  static get Camera2() { return Keyboard.isPressed("Digit2"); }
+  static get ShiftLeft() { return Keyboard.isDown("ShiftLeft"); }
 }
 //#endregion
 //#region Resize handler
@@ -112,12 +113,14 @@ function resize() {
 function resetCameras() {
   console.assert(activeCamera, "There is no active camera");
   setupCamera(activeCamera);
+  setupCamera(camera2);
 }
 function setupCamera(camera) {
   console.assert(camera.view, "Camera MUST have a view");
   console.assert(camera.canvas, "Camera MUST have a canvas");
   camera.canvas.width = window.innerWidth / 2;
   camera.canvas.height = window.innerHeight;
+  if (camera.id == 2) camera.canvas.style.left = window.innerWidth / 2 + "px";
   camera.view.translate(camera.canvas.width / 2, camera.canvas.height / 2);
   camera.view.scale(1, -1);
   camera.view.lineWidth = 1;
@@ -144,7 +147,7 @@ function setupView(canvas) { // NOT used
 addEventListener("resize", resetCameras);
 //#endregion
 //#region Pointer Lock
-document.addEventListener("pointerlockchange", onLockChange);
+document.addEventListener("pointerlockchange", onLockChange); 
 // canvas.addEventListener("click", async e => {
 //     if (e.button == 0) {
 //         console.log("Click");
@@ -454,13 +457,13 @@ class GameObject {
   constructor(x = 0, y = 0, z = 0, s = 1, sx = 1, sy = 1, sz = 1) {
     this.position = { x, y, z };
     this.scale = s;
-    if (this.model)
-      for (const p of this.model) {
-        p.x *= sx;
-        p.y *= sy;
-        p.z *= sz;
-        p.parent = this;
-      }
+    // if (this.model)  // model does NOT exist in the super
+    //   for (const p of this.model) {
+    //     p.x *= sx;
+    //     p.y *= sy;
+    //     p.z *= sz;
+    //     p.parent = this;
+    // }
   }
   update() {
     if (this.auto?.x) this.rotation.x += this.auto.x;
@@ -477,12 +480,13 @@ class GameObject {
     }
   }
   draw(camera) {
+    //if (camera === this) return;
     const points = [];
     for (const p of this.model) {
       const lp = this.toLocalPoint(p);
       const wp = this.toWorldPoint(lp); // lp
       const cp = this.toCameraPoint(wp, camera);
-      const xy = this.toXyPoint(cp);
+      const xy = this.toXyPoint(cp, camera);
       points.push({ wp, cp, xy, id: p.id });
     }
 
@@ -490,7 +494,7 @@ class GameObject {
     for (const p of this.points) {
       const wp = { x: p.wp.x, y: p.wp.y, z: p.wp.z };
       const cp = this.toCameraPoint(p.wp, camera);
-      const xy = this.toXyPoint(cp);
+      const xy = this.toXyPoint(cp, camera);
       camera.points.push({ wp, cp, xy, id: p.id });
     }
 
@@ -523,9 +527,9 @@ class GameObject {
     const rx = this.rotate(ry, camera.rotation, "x");
     return rx;
   }
-  toXyPoint(p) {
+  toXyPoint(p, camera) {
     if (p == null || p.z == 0) return null;
-    const xy = { x: (p.x / p.z) * activeCamera.canvas.width, y: (p.y / p.z) * activeCamera.canvas.width };
+    const xy = { x: (p.x / p.z) * camera.canvas.width, y: (p.y / p.z) * camera.canvas.width };
     return xy;
   }
   rotate(p, rotation, axis = "y") {
@@ -587,19 +591,13 @@ class GameObject {
     for (let i = 0; i < this.model.length; ++i)
       this.model[i] = addVector(this.model[i], this.parentOffset);
   }
-  moveTo(p, o = 0) {
-    if (p) activeCamera.view.moveTo(p.x + o, p.y + o);
-  }
-  lineTo(p, o = 0) {
-    if (p) activeCamera.view.lineTo(p.x + o, p.y + o);
-  }
-  dot(p) {
-    if (p) activeCamera.view.fillRect(p.x - 2, p.y - 2, 4, 4);
-  }
+  moveTo(p, camera) { if (p) camera.view.moveTo(p.x, p.y); }
+  lineTo(p, camera) { if (p) camera.view.lineTo(p.x, p.y); }
+  dot(p, camera) { if (p) camera.view.fillRect(p.x - 2, p.y - 2, 4, 4); }
   text(t, p, camera) {
-    activeCamera.view.fillStyle = gameSettings.textColor; // "lime";
+    camera.view.fillStyle = gameSettings.textColor; // "lime";
     //view.font = "18px Arial";
-    if (t && p) activeCamera.view.fillText(t, p.x, p.y);
+    if (t && p) camera.view.fillText(t, p.x, p.y);
   }
 }
 class MultiFace extends GameObject {
@@ -652,7 +650,7 @@ class Plane extends GameObject {
     for (const point of this.model) {
       const wp = point;
       const cp = this.toCameraPoint(wp, camera);
-      const xy = this.toXyPoint(cp);
+      const xy = this.toXyPoint(cp, camera);
       points.push({ wp, cp, xy });
     }
     for (const f of this.faces) f.fill(points, f.color, camera);
@@ -760,20 +758,19 @@ class Face extends GameObject {
       //shadeFace(fp);
 
       let strColor = this.toRGB(color);
-      activeCamera.view.fillStyle = strColor;
-      activeCamera.view.shadowColor = activeCamera.view.fillStyle;
-      activeCamera.view.strokeStyle = strColor;
-      this.drawFace(fp);
-      activeCamera.view.shadowColor = "rgba(0,0,0,0)";
+      camera.view.fillStyle = strColor;
+      camera.view.shadowColor = camera.view.fillStyle;
+      camera.view.strokeStyle = strColor;
+      this.drawFace(fp, camera);
+      camera.view.shadowColor = "rgba(0,0,0,0)";
       for (const p of fp) if (p.id && p.xy) this.text(p.id, p.xy, camera);
 
       //drawSkew(testImage, xy[0], xy[1], xy[2], xy[3]);
 
-      // const cp = this.getFacePoints(cameraPoints);
-      // const camVectorAB = subtractVector(cp[1], cp[0]);
-      // const camVectorAC = subtractVector(cp[2], cp[0]);
+      // const camVectorAB = subtractVector(fp[1], fp[0]);
+      // const camVectorAC = subtractVector(fp[2], fp[0]);
       // const camNormal = crossProduct(camVectorAB, camVectorAC);
-      // this.showNormals(cp, camNormal);
+      // this.showNormals(fp, camNormal, camera);
     }
   }
   fill(points, color, camera) {
@@ -781,11 +778,11 @@ class Face extends GameObject {
     let c = 0;
     for (const p of fp) if (!p.xy) return;
     let col = this.toRGB(color);
-    activeCamera.view.fillStyle = col;
-    //activeCamera.view.shadowColor = view.fillStyle;
-    activeCamera.view.strokeStyle = col;
-    this.drawFace(fp);
-    //this.text(this.id, fp[1].xy);
+    camera.view.fillStyle = col;
+    //camera.view.shadowColor = view.fillStyle;
+    camera.view.strokeStyle = col;
+    this.drawFace(fp, camera);
+    //this.text(this.id, fp[1].xy, camera);
   }
   blendColors(color, light, strength = 0.5) {
     strength = clamp(strength);
@@ -817,43 +814,40 @@ class Face extends GameObject {
     const diff = 1 - value;
     return diff < variance;
   }
-  drawFace(points) {
-    activeCamera.view.beginPath();
-    this.drawLines(points);
-    //const oldStroke  = activeCamera.view.strokeStyle;
-    //activeCamera.view.strokeStyle = "black";
-    //activeCamera.view.stroke();
-    //activeCamera.view.strokeStyle = oldStroke;
+  drawFace(points, camera) {
+    camera.view.beginPath();
+    this.drawLines(points, camera);
+    //const oldStroke  = camera.view.strokeStyle;
+    //camera.view.strokeStyle = "black";
+    //camera.view.stroke();
+    //camera.view.strokeStyle = oldStroke;
     //if (gameSettings.doubleDraw) this.drawLines(points, 1);
-    activeCamera.view.fill();
+    camera.view.fill();
 
     if (
       gameSettings.selectFace &&
-      activeCamera.view.isPointInPath(activeCamera.canvas.width / 2, activeCamera.canvas.height / 2)
+      camera.view.isPointInPath(camera.canvas.width / 2, camera.canvas.height / 2)
     ) {
-      const oldStroke = activeCamera.view.strokeStyle;
-      activeCamera.view.strokeStyle = "red";
-      activeCamera.view.stroke();
-      activeCamera.view.strokeStyle = oldStroke;
+      const oldStroke = camera.view.strokeStyle;
+      camera.view.strokeStyle = "red";
+      camera.view.stroke();
+      camera.view.strokeStyle = oldStroke;
     }
   }
-  drawLines(points, o = 0) {
-    this.moveTo(points[points.length - 1].xy, o);
-    for (const p of points) this.lineTo(p.xy, o);
+  drawLines(points, camera) {
+    this.moveTo(points[points.length - 1].xy, camera);
+    for (const p of points) this.lineTo(p.xy, camera);
   }
-  showNormals(cp, camNormal) {
+  showNormals(cp, camNormal, camera) {
     const center = centroid(cp);
     const cpCenter = this.toXyPoint(center);
     const normalEnd = addVector(center, camNormal);
     const cpNormalEnd = this.toXyPoint(normalEnd);
-    activeCamera.view.strokeStyle = "yellow";
-    activeCamera.view.beginPath();
-    this.moveTo(cpCenter);
-    this.lineTo(cpNormalEnd);
-    activeCamera.view.stroke();
-  }
-  distance(camera) {
-
+    camera.view.strokeStyle = "yellow";
+    camera.view.beginPath();
+    this.moveTo(cpCenter, camera);
+    this.lineTo(cpNormalEnd, camera);
+    camera.view.stroke();
   }
   get side() {
     return Face.sides[this.id];
@@ -945,18 +939,18 @@ class Sphere extends GameObject {
     }
     this.faces.push(new Face([(h - 1) * v, (h - 2) * v + 1, (h - 1) * v + 1])); // south pole point
   }
-  setPixel(p) {
+  setPixel(p, camera) {
     if (p)
-      activeCamera.view.fillRect(
+      camera.view.fillRect(
         p.x - this.dotSize / 2,
         p.y - this.dotSize / 2,
         this.dotSize,
         this.dotSize
       );
   }
-  text(t, p) {
-    activeCamera.view.font = "18px Arial";
-    activeCamera.view.fillText(t, p.x, p.y);
+  text(t, p, camera) {
+    camera.view.font = "18px Arial";
+    camera.view.fillText(t, p.x, p.y);
   }
 }
 class SimpleSphere extends GameObject {
@@ -983,7 +977,7 @@ class SimpleSphere extends GameObject {
       subtractVector(this.position, camera.position)
     );
     const camCenter = this.toCameraPoint(this.position, camera);
-    const xySphereCenter = this.toXyPoint(camCenter);
+    const xySphereCenter = this.toXyPoint(camCenter, camera);
     const unitvectorToEdge = crossProduct(
       unitvectorSphereCentreToCamera,
       unitVector2
@@ -991,7 +985,7 @@ class SimpleSphere extends GameObject {
     const vectorToEdge = multiplyVector(unitvectorToEdge, this.radius);
     const worldpointEdge = addVector(this.position, vectorToEdge);
     const camEdge = this.toCameraPoint(worldpointEdge, camera);
-    const xySphereEdge = this.toXyPoint(camEdge);
+    const xySphereEdge = this.toXyPoint(camEdge, camera);
 
     if (xySphereCenter && xySphereEdge) {
       const xyRadius = Math.sqrt(
@@ -999,12 +993,12 @@ class SimpleSphere extends GameObject {
           (xySphereCenter.y - xySphereEdge.y) ** 2
       );
       if (xyRadius > 1) {
-        activeCamera.view.fillStyle = arrayToColor(this.color);
-        activeCamera.view.beginPath();
-        activeCamera.view.arc(xySphereCenter.x, xySphereCenter.y, xyRadius, 0, Math.PI * 2);
-        activeCamera.view.fill();
+        camera.view.fillStyle = arrayToColor(this.color);
+        camera.view.beginPath();
+        camera.view.arc(xySphereCenter.x, xySphereCenter.y, xyRadius, 0, Math.PI * 2);
+        camera.view.fill();
 
-        activeCamera.view.globalCompositeOperation = "hard-light";
+        camera.view.globalCompositeOperation = "hard-light";
         //const light = scene.lights[0];
         for (const light of scene.lights) {
           const lightVector = normaliseVector(
@@ -1017,11 +1011,11 @@ class SimpleSphere extends GameObject {
           const mv = multiplyVector(midVector, this.radius);
           const av = addVector(this.position, mv);
           const cp = this.toCameraPoint(av, camera);
-          const xySpecularCenter = this.toXyPoint(cp);
+          const xySpecularCenter = this.toXyPoint(cp, camera);
           if (xySpecularCenter) {
-            activeCamera.view.save();
-            activeCamera.view.clip();
-            const grad = activeCamera.view.createRadialGradient(
+            camera.view.save();
+            camera.view.clip();
+            const grad = camera.view.createRadialGradient(
               xySpecularCenter.x,
               xySpecularCenter.y,
               xyRadius / distance,
@@ -1032,17 +1026,17 @@ class SimpleSphere extends GameObject {
             grad.addColorStop(0, arrayToColor(light.color));
             //grad.addColorStop(0, `rgba(${light.color[0]},${light.color[1]},${light.color[2]},0.5)`);
             grad.addColorStop(1, "rgba(255,255,255,0)");
-            activeCamera.view.fillStyle = grad;
-            activeCamera.view.fillRect(
+            camera.view.fillStyle = grad;
+            camera.view.fillRect(
               xySpecularCenter.x - xyRadius * 2,
               xySpecularCenter.y - xyRadius * 2,
               xyRadius * 4,
               xyRadius * 4
             );
-            activeCamera.view.restore();
+            camera.view.restore();
           }
         }
-        activeCamera.view.globalCompositeOperation = "source-over";
+        camera.view.globalCompositeOperation = "source-over";
       }
     }
   }
@@ -1108,10 +1102,10 @@ class Cylinder extends GameObject {
       this.faces.push(new Face([i, i + 1, i + s + 1, i + s]));
     this.faces.push(new Face([s, 1, s + 1, s * 2]));
   }
-  text(t, p) {
-    activeCamera.view.fillStyle = "red";
-    activeCamera.view.font = "18px Arial";
-    if (p) activeCamera.view.fillText(t, p.x, p.y);
+  text(t, p, camera) {
+    camera.view.fillStyle = "red";
+    camera.view.font = "18px Arial";
+    if (p) camera.view.fillText(t, p.x, p.y);
   }
 }
 class Cube extends GameObject {
@@ -1252,7 +1246,7 @@ class Torus extends GameObject {
         const lp = this.toLocalPoint(p);
         const wp = this.toWorldPoint(lp); // lp
         const cp = this.toCameraPoint(wp, camera);
-        const xy = this.toXyPoint(cp);
+        const xy = this.toXyPoint(cp, camera);
         points.push({ wp, cp, xy, id: p.id });
       }
   
@@ -1260,7 +1254,7 @@ class Torus extends GameObject {
       for (const p of this.points) {
         const wp = { x: p.wp.x, y: p.wp.y, z: p.wp.z };
         const cp = this.toCameraPoint(p.wp, camera);
-        const xy = this.toXyPoint(cp);
+        const xy = this.toXyPoint(cp, camera);
         camera.points.push({ wp, cp, xy, id: p.id });
       }
 
@@ -1277,8 +1271,8 @@ class Torus extends GameObject {
   
 
       // for (const p of camera.points) {
-      //   this.dot(p.xy);
-      //   this.text(p.id, p.xy);
+      //   this.dot(p.xy, camera);
+      //   this.text(p.id, p.xy, camera);
       // }
     }
 }
@@ -1318,14 +1312,14 @@ class PointLight extends GameObject {
       this.rotate(this.position, { y: this.angle * this.direction }, "y")
     );
 
-    const position = this.toXyPoint(this.toCameraPoint(this.position, camera));
+    const position = this.toXyPoint(this.toCameraPoint(this.position, camera), camera);
     //const circ  = this.toXyPoint(this.toCameraPoint({x: this.position.x + this.radius, y: this.position.y, z: this.position.z }, camera));
     if (position) {
       const d = dist3d(this.position, camera.position);
       const radius = this.radius / d;
       if (radius > 0) {
-        const oldStyle = activeCamera.view.fillStyle;
-        const grad = activeCamera.view.createRadialGradient(
+        const oldStyle = camera.view.fillStyle;
+        const grad = camera.view.createRadialGradient(
           position.x,
           position.y,
           radius / 2,
@@ -1338,14 +1332,14 @@ class PointLight extends GameObject {
           `rgba(${this.color[0]},${this.color[1]},${this.color[2]}, 0.7)`
         );
         grad.addColorStop(1, "rgba(0,0,0,0)");
-        activeCamera.view.fillStyle = grad;
-        activeCamera.view.fillRect(
+        camera.view.fillStyle = grad;
+        camera.view.fillRect(
           position.x - radius,
           position.y - radius,
           radius * 2,
           radius * 2
         );
-        activeCamera.view.fillStyle = oldStyle;
+        camera.view.fillStyle = oldStyle;
       }
     }
   }
@@ -1385,21 +1379,21 @@ class SpotLight extends GameObject {
     if (xyCenter && xyEdge) {
       const radius = xyEdge.x - xyCenter.x;
       if (radius > 0) {
-        const oldStyle = activeCamera.view.fillStyle;
-        activeCamera.view.fillStyle = this.color;
-        activeCamera.view.arc(xyCenter.x, xyCenter.y, radius, 0, Math.PI * 2);
-        activeCamera.view.fill();
-        activeCamera.view.fillStyle = oldStyle;
+        const oldStyle = camera.view.fillStyle;
+        camera.view.fillStyle = this.color;
+        camera.view.arc(xyCenter.x, xyCenter.y, radius, 0, Math.PI * 2);
+        camera.view.fill();
+        camera.view.fillStyle = oldStyle;
       }
-      activeCamera.view.lineWidth = 5;
-      const oldStroke = activeCamera.view.strokeStyle;
-      activeCamera.view.strokeStyle = this.color;
-      activeCamera.view.beginPath();
+      camera.view.lineWidth = 5;
+      const oldStroke = camera.view.strokeStyle;
+      camera.view.strokeStyle = this.color;
+      camera.view.beginPath();
       this.moveTo(xyCenter);
       this.lineTo(xy);
-      activeCamera.view.stroke();
-      activeCamera.view.strokeStyle = oldStroke;
-      activeCamera.view.lineWidth = 1;
+      camera.view.stroke();
+      camera.view.strokeStyle = oldStroke;
+      camera.view.lineWidth = 1;
     }
   }
 }
@@ -1454,20 +1448,20 @@ class Particle {
         this.position.y = -10;
         this.direction.y = -this.direction.y * 0.95;
       }
-      const xy = this.toXyPoint(this.toCameraPoint(this.position, camera));
+      const xy = this.toXyPoint(this.toCameraPoint(this.position, camera), camera);
       if (xy) {
         const fadePoint = this.lifetime * this.fadeOut;
         this.color[3] = this.ttl < fadePoint ? this.ttl / fadePoint : 1;
         const color = arrayToColorA(this.color);
-        const oldFillStyle = activeCamera.view.fillStyle;
-        //activeCamera.view.fillStyle = color;
+        const oldFillStyle = camera.view.fillStyle;
+        //camera.view.fillStyle = color;
         //view.fillRect(xy.x, xy.y, this.size, this.size);
 
         // view.beginPath();
         // view.arc(xy.x, xy.y, this.size, 0, Math.PI * 2);
         // view.fill();
 
-        const grad = activeCamera.view.createRadialGradient(
+        const grad = camera.view.createRadialGradient(
           xy.x,
           xy.y,
           0,
@@ -1478,15 +1472,15 @@ class Particle {
         grad.addColorStop(0, color);
         const colorStop = `rgba(${this.color[0]},${this.color[1]},${this.color[2]},0)`;
         grad.addColorStop(1, colorStop);
-        activeCamera.view.fillStyle = grad;
-        activeCamera.view.fillRect(
+        camera.view.fillStyle = grad;
+        camera.view.fillRect(
           xy.x - this.size,
           xy.y - this.size,
           this.size * 2,
           this.size * 2
         );
 
-        activeCamera.view.fillStyle = oldFillStyle;
+        camera.view.fillStyle = oldFillStyle;
       }
     }
   }
@@ -1501,9 +1495,9 @@ class Particle {
     const rx = this.rotate(ry, camera.rotation, "x");
     return rx;
   }
-  toXyPoint(p) {
+  toXyPoint(p, camera) {
     if (p == null || p.z == 0) return null;
-    const xy = { x: (p.x / p.z) * activeCamera.canvas.width, y: (p.y / p.z) * activeCamera.canvas.width };
+    const xy = { x: (p.x / p.z) * camera.canvas.width, y: (p.y / p.z) * camera.canvas.width };
     return xy;
   }
   rotate(p, rotation, axis = "y") {
@@ -1546,9 +1540,9 @@ class ParticleEmitter {
         if (Math.random() < this.rate) this.particles.push(this.newParticle());
       }
 
-      const oldFillStyle = activeCamera.view.fillStyle;
+      const oldFillStyle = camera.view.fillStyle;
       for (const p of this.particles) p.draw(camera);
-      activeCamera.view.fillStyle = oldFillStyle;
+      camera.view.fillStyle = oldFillStyle;
       if (this.particles.length > 1000)
         this.particles = this.particles.filter((p) => p.ttl > 0);
     }
@@ -1611,22 +1605,54 @@ class Rotation {
   }
 }
 class Camera extends GameObject {
+  model = [ new Pt(0, 0, 0), new Pt(-1, 1, 3), new Pt(1, 1, 3), new Pt(1, -1, 3), new Pt(-1, -1, 3) ];
+  faces = [ new Face([0, 1, 2], true), new Face([0, 2, 3], true), new Face([0, 3, 4], true), new Face([0, 4, 1], true) ];
+
+  // model = [
+  //   new Pt(0, 1, 0),
+  //   new Pt(1, 0, 1),
+  //   new Pt(1, 0, -1),
+  //   new Pt(-1, 0, -1),
+  //   new Pt(-1, 0, 1),
+  // ];
+  // faces = [
+  //   new Face([0, 1, 2]),
+  //   new Face([0, 2, 3]),
+  //   new Face([0, 3, 4]),
+  //   new Face([0, 4, 1]),
+  //   new Face([4, 3, 2, 1]),
+  // ];
+
+
   forwardVector = { x: 0, y: 0, z: 1 };
   rightVector = { x: 1, y: 0, z: 0 };
   upVector = { x: 0, y: 1, z: 0 };
   rotation = new Rotation(); // { x: 0, y: 0 };
+  // rotation = { x: 0, y: 0 };
   zoom = 1;
   max = 500;
   min = 1;
   fov = 0;
-  static #cameraId = 0;
-  constructor(x = 0, y = 0, z = 0) {
-    super(x, y, z);
+  static #nextId = 0;
+  static Cameras = [];
+  static get Count() { return Camera.Cameras.length; }
+  constructor(x = 0, y = 0, z = 0, s = 1, sx = 1, sy = 1, sz = 1) {
+    super(x, y, z, s);
+    Camera.Cameras.push(this);
     this.canvas = document.createElement("canvas");
     this.canvas.backgroundPosition = { x: 0, y: 0 };
+    this.canvas.camera = this; 
     document.body.appendChild(this.canvas);
     this.view = this.canvas.getContext("2d");
-    this.id = ++Camera.#cameraId;
+
+    this.id = ++Camera.#nextId;
+    for (const p of this.model) {
+      p.x *= sx;
+      p.y *= sy;
+      p.z *= sz;
+      p.parent = this;
+    }
+    for(let i = 0; i < this.model.length; ++i) this.model[i].id = i;
   }
   get heading() {
     return {
@@ -1685,6 +1711,16 @@ class Camera extends GameObject {
   moveDown(dist = 1) {
     this.moveUp(-dist);
   }
+  turnRight() {
+    this.rotation.y += 0.01;
+    this.canvas.backgroundPosition.x -= 13;
+    this.canvas.style.backgroundPositionX = `${this.canvas.backgroundPosition.x}px`;
+  }
+  turnLeft() {
+    this.rotation.y -= 0.01;
+    this.canvas.backgroundPosition.x += 13;
+    this.canvas.style.backgroundPositionX = `${this.canvas.backgroundPosition.x}px`;
+  }
   reset() {
     this.position.x = 0;
     this.position.y = 0;
@@ -1693,6 +1729,7 @@ class Camera extends GameObject {
     this.rotation.y = 0;
   }
   rotate(p, rotation, axis) {
+    if (p.parent != this) return super.rotate(p, rotation, axis);
     const angle = -rotation[axis];
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
@@ -1725,29 +1762,15 @@ class Scene {
   }
   draw(camera) {
     if (this.animate) {
-      activeCamera.view.clearRect(
-        -activeCamera.canvas.width / 2,
-        -activeCamera.canvas.height / 2,
-        activeCamera.canvas.width,
-        activeCamera.canvas.height
-      );
+      const w = camera.canvas.width;
+      const h = camera.canvas.height;
+      camera.view.clearRect(-w / 2, -h / 2, w, h);
       if (this.plane) this.plane.draw(camera);
       this.sort(camera);
-      for (const o of this.objects) o.draw(camera);
+      for (const o of this.objects) if(o != camera) o.draw(camera);
     }
   }
-  sort(camera) {
-    this.objects.sort((a, b) => b.distance(camera) - a.distance(camera));
-  }
-  clear() {
-    if (this.animate)
-      activeCamera.view.clearRect(
-        -activeCamera.canvas.width / 2,
-        -activeCamera.canvas.height / 2,
-        activeCamera.canvas.width,
-        activeCamera.canvas.height
-      );
-  }
+  sort(camera) { this.objects.sort((a, b) => b.distance(camera) - a.distance(camera)); }
 }
 //#region Define objects
 const lightSource1 = new PointLight(0, 25, 20);
@@ -1756,7 +1779,14 @@ const lightSource2 = new PointLight(0, 5, -20, -1);
 lightSource2.color = [0, 0, 255];
 //const spotlight1 = new SpotLight(0, 0, 10);
 
-let activeCamera = new Camera(0, 0, 80);
+const camera1 = new Camera(0, 2, -80);
+camera1.color = [255, 0, 0, 0.5];
+const camera2 = new Camera(12, 2, -80);
+camera2.color = [0, 0, 255, 0.5];
+let activeCamera = camera1;
+
+const pyramid4 = new Pyramid(12, -10, -80, 1, 1, 12);
+
 const peg = new ParticleEmitter(0, -9, 70);
 const pyramid2 = new Pyramid(0, -10, 70);
 const cube = new Cube(-5, 0, 0, 1, 10, 0.1);
@@ -1831,22 +1861,26 @@ gui.add(peg, "gravity", -0.1, 0);
 gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
+scene.add(camera1);
+scene.add(camera2);
+scene.add(pyramid4);
+
 scene.add(cube);
 scene.add(sphere);
 scene.add(cylinder);
 scene.add(pyramid);
 scene.add(wedge);
 scene.add(sphere2);
-// //scene.add(sphere3);
+// // //scene.add(sphere3);
 scene.addLight(lightSource1);
-scene.addLight(lightSource2);
-scene.add(tri1);
-scene.add(simple);
-scene.add(peg);
-scene.add(pyramid2);
+// scene.addLight(lightSource2);
+// scene.add(tri1);
+// scene.add(simple);
+// scene.add(peg);
+// scene.add(pyramid2);
 
-scene.add(pyramid3);
-scene.add(torus);
+// scene.add(pyramid3);
+// scene.add(torus);
 //scene.add(spotlight1);
 
 //for(let i = 0; i < 100; ++i) scene.add(new Cube());
@@ -1858,24 +1892,20 @@ cube.connect(wedge);
 let delta = 0.1;
 function animate() {
   //#region Game Input
-  if (GameInput.Control) delta = (delta == 0.1) ? 0.01: 0.1;
+  if (GameInput.Control) delta = (delta == 0.1) ? 1: 0.1;
   if (GameInput.Forward) activeCamera.moveForward(delta);
   if (GameInput.Back) activeCamera.moveBack(delta);
   if (GameInput.Right) activeCamera.moveRight(delta);
   if (GameInput.Left) activeCamera.moveLeft(delta);
-  if (GameInput.TurnRight) {
-    activeCamera.rotation.y += 0.01;
-    activeCamera.canvas.backgroundPosition.x -= 13;
-    activeCamera.canvas.style.backgroundPositionX = `${activeCamera.canvas.backgroundPosition.x}px`;
-}
-  if (GameInput.TurnLeft) {
-    activeCamera.rotation.y -= 0.01;
-    activeCamera.canvas.backgroundPosition.x += 13;
-    activeCamera.canvas.style.backgroundPositionX = `${activeCamera.canvas.backgroundPosition.x}px`;
-  }
+  if (GameInput.TurnRight) { activeCamera.turnRight(); }
+  if (GameInput.TurnLeft) { activeCamera.turnLeft(); }
   if (GameInput.Up) activeCamera.moveUp(delta * 10);
   if (GameInput.Down) activeCamera.moveDown(delta * 10);
   if (GameInput.Reset) activeCamera.reset();
+  if (GameInput.North) activeCamera.moveNorth(delta);
+  if (GameInput.South) activeCamera.moveNorth(-delta);
+  if (GameInput.Camera1) activeCamera = camera1;
+  if (GameInput.Camera2) activeCamera = camera2;
   if (GameInput.Fire) {
     const bullet = new SimpleSphere(
       activeCamera.position.x,
@@ -1887,11 +1917,10 @@ function animate() {
     bullet.scale = 0.2;
     scene.add(bullet);
   }
-  if (GameInput.North) activeCamera.moveNorth(delta);
-  if (GameInput.South) activeCamera.moveNorth(-delta); 
   //#endregion
   scene.update();
-  scene.draw(activeCamera);
+  scene.draw(camera1);
+  scene.draw(camera2);
   if (gameSettings.showCrossHair) {
     const oldStroke = activeCamera.view.strokeStyle;
     const oldLineWidth = activeCamera.view.lineWidth;
