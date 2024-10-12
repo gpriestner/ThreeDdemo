@@ -78,7 +78,7 @@ class Mouse {
   })();
 }
 class GameInput {
-  static get Forward() { return Keyboard.isDown("KeyW") || Mouse.LeftDown; }
+  static get Forward() { return Keyboard.isDown("KeyW") /*|| Mouse.LeftDown*/; }
   static get Left() { return Keyboard.isDown("KeyA"); }
   static get Right() { return Keyboard.isDown("KeyD"); }
   static get TurnLeft() { return Keyboard.isDown("ArrowLeft"); }
@@ -94,6 +94,9 @@ class GameInput {
   static get Camera1() { return Keyboard.isPressed("Digit1"); }
   static get Camera2() { return Keyboard.isPressed("Digit2"); }
   static get ShiftLeft() { return Keyboard.isDown("ShiftLeft"); }
+  static get PitchUp() { return Keyboard.isDown("KeyE"); }
+  static get PitchDown() { return Keyboard.isDown("KeyC"); }
+  static get Look() { return Keyboard.isPressed("KeyL"); }
 }
 //#endregion
 //#region Resize handler
@@ -111,8 +114,8 @@ function resize() {
   setupView(canvas2);
 }
 function resetCameras() {
-  console.assert(activeCamera, "There is no active camera");
-  setupCamera(activeCamera);
+  console.assert(Camera.Active, "There is no active camera");
+  setupCamera(Camera.Active);
   setupCamera(camera2);
 }
 function setupCamera(camera) {
@@ -165,7 +168,7 @@ document.addEventListener("pointerlockchange", onLockChange);
 async function togglePointerLock() {
   //console.log("Toggle");
   if (!document.pointerLockElement) {
-    await activeCamera.canvas.requestPointerLock({
+    await Camera.Active.canvas.requestPointerLock({
       unadjustedMovement: true,
     });
   } else {
@@ -173,35 +176,35 @@ async function togglePointerLock() {
   }
 }
 function onLockChange() {
-  if (document.pointerLockElement === activeCamera.canvas)
+  if (document.pointerLockElement === Camera.Active.canvas)
     document.addEventListener("mousemove", updatePosition);
   else document.removeEventListener("mousemove", updatePosition);
 }
 function updatePosition(e) {
   const dx = -e.movementX * 1.3;
   const dy = -e.movementY * 1.3;
-  activeCamera.canvas.backgroundPosition.x += dx;
-  activeCamera.canvas.backgroundPosition.y += dy;
-  activeCamera.canvas.style.backgroundPositionX = `${activeCamera.canvas.backgroundPosition.x}px`;
+  Camera.Active.canvas.backgroundPosition.x += dx;
+  Camera.Active.canvas.backgroundPosition.y += dy;
+  Camera.Active.canvas.style.backgroundPositionX = `${Camera.Active.canvas.backgroundPosition.x}px`;
 
-  activeCamera.rotation.x -= e.movementY / 1000; // look up/down
-  if (activeCamera.rotation.x < -Math.PI / 2) activeCamera.rotation.x = -Math.PI / 2;
-  else if (activeCamera.rotation.x > Math.PI / 2) activeCamera.rotation.x = Math.PI / 2;
-  else activeCamera.canvas.style.backgroundPositionY = `${activeCamera.canvas.backgroundPosition.y}px`;
+  Camera.Active.rotation.x -= e.movementY / 1000; // look up/down
+  if (Camera.Active.rotation.x < -Math.PI / 2) Camera.Active.rotation.x = -Math.PI / 2;
+  else if (Camera.Active.rotation.x > Math.PI / 2) Camera.Active.rotation.x = Math.PI / 2;
+  else Camera.Active.canvas.style.backgroundPositionY = `${Camera.Active.canvas.backgroundPosition.y}px`;
 
-  activeCamera.rotation.y += e.movementX / 1000; // look left/right
+  Camera.Active.rotation.y += e.movementX / 1000; // look left/right
 
   // spotlight1.direction.x += e.movementX / 1000;
   // spotlight1.direction.y -= e.movementY / 1000;
 
-  if (activeCamera.rotation.x > Math.PI) activeCamera.rotation.x -= Math.PI * 2;
-  if (activeCamera.rotation.x < -Math.PI) activeCamera.rotation.x += Math.PI * 2;
-  if (activeCamera.rotation.y > Math.PI) activeCamera.rotation.y -= Math.PI * 2;
-  if (activeCamera.rotation.y < -Math.PI) activeCamera.rotation.y += Math.PI * 2;
+  // if (Camera.Active.rotation.x > Math.PI) Camera.Active.rotation.x -= Math.PI * 2;
+  // if (Camera.Active.rotation.x < -Math.PI) Camera.Active.rotation.x += Math.PI * 2;
+  if (Camera.Active.rotation.y > Math.PI) Camera.Active.rotation.y -= Math.PI * 2;
+  if (Camera.Active.rotation.y < -Math.PI) Camera.Active.rotation.y += Math.PI * 2;
 }
 document.addEventListener("wheel", async (e) => {
-  if (e.deltaY) activeCamera.moveUp(-e.deltaY / 20);
-  if (e.deltaX) activeCamera.moveRight(e.deltaX / 100);
+  if (e.deltaY) Camera.Active.moveUp(-e.deltaY / 20);
+  if (e.deltaX) Camera.Active.moveRight(e.deltaX / 100);
 });
 //#endregion
 //#region Utility Functions
@@ -404,10 +407,10 @@ const rndColor = () => [
   Math.random() * 255,
 ];
 function colorToArray(color) {
-  const oldStyle = view.fillStyle;
-  view.fillStyle = color;
-  const c = view.fillStyle;
-  view.fillStyle = oldStyle;
+  const oldStyle = Camera.Active.view.fillStyle;
+  Camera.Active.view.fillStyle = color;
+  const c = Camera.Active.view.fillStyle;
+  Camera.Active.view.fillStyle = oldStyle;
   return [
     parseInt("0x" + c[1] + c[2]),
     parseInt("0x" + c[3] + c[4]),
@@ -419,6 +422,9 @@ function arrayToColor(a) {
 }
 function arrayToColorA(a) {
   return `rgba(${a[0]},${a[1]},${a[2]},${a[3]})`;
+}
+function toDegrees(r) {
+  return r * 180 / Math.PI;
 }
 //#endregion
 class Pt {
@@ -441,6 +447,7 @@ class GameSettings {
     this.textColor = arrayToColor(c);
   }
   textColor = "white";
+  animate = true;
 }
 const gameSettings = new GameSettings();
 class GameObject {
@@ -470,6 +477,8 @@ class GameObject {
     if (this.auto?.y) this.rotation.y += this.auto.y;
     if (this.auto?.z) this.rotation.z += this.auto.z;
 
+    if (this.facePoints) this.facePoints = null;
+
     if (this.model) {
       this.points = [];
       for (const p of this.model) {
@@ -498,11 +507,26 @@ class GameObject {
       camera.points.push({ wp, cp, xy, id: p.id });
     }
 
+    // sort faces so furthest away are draw first - only needed for concave objects
+    if (this.concave) {
+      for(const f of this.faces) {
+        const facePoints = f.getFacePoints(points);
+        let dist = 0;
+        for (const fp of facePoints) {
+          dist += fp.xy?.z ?? 0;
+        }
+        dist = dist / facePoints.length;
+        f.distanceFromCamera = dist;
+      }
+      this.faces.sort((a, b) => b.distanceFromCamera - a.distanceFromCamera);
+    }
+
     for (const f of this.faces)
       f.draw(this.position, points, this.color, camera);
   }
   toLocalPoint(p) {
     if (!this.rotation) return;
+    if (this instanceof Camera) return this.toCameraLocalPoint(p);
     let r = p;
     for (const a of "yxz")
       if (this.rotation[a]) r = this.rotate(r, this.rotation, a);
@@ -525,15 +549,58 @@ class GameObject {
     if (dp < 0 /*camera.fov*/) return null;
     const ry = this.rotate(cp, camera.rotation, "y");
     const rx = this.rotate(ry, camera.rotation, "x");
+    rx.d = l;
     return rx;
   }
   toXyPoint(p, camera) {
-    if (p == null || p.z == 0) return null;
-    const xy = { x: (p.x / p.z) * camera.canvas.width, y: (p.y / p.z) * camera.canvas.width };
+    //if (p == null || p.z == 0) return null;
+    if (!p?.z) return null;
+    const xy = { x: (p.x / p.z) * camera.canvas.width, y: (p.y / p.z) * camera.canvas.width, z: p.d };
     return xy;
   }
   rotate(p, rotation, axis = "y") {
     const angle = rotation[axis];
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    switch (axis) {
+      case "x":
+        return { x: p.x, y: p.y * cos - p.z * sin, z: p.y * sin + p.z * cos };
+      case "y":
+        return { x: p.x * cos - p.z * sin, y: p.y, z: p.x * sin + p.z * cos };
+      case "z":
+        return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z };
+    }
+  }
+  toCameraLocalPoint(p) {
+    // let r = p;
+    // for (const a of "yxz")
+    //   if (this.rotation[a]) r = this.cameraRotate(r, this.rotation, a);
+    // return r;
+    
+    // rotate p around y
+    const cosY = Math.cos(-this.rotation.y);
+    const sinY = Math.sin(-this.rotation.y);
+    const ry = { x: p.x * cosY - p.z * sinY, y: p.y, z: p.x * sinY + p.z * cosY };
+
+    // calculate pitch vector
+    const rightVector = { x: 1, y: 0, z: 0 };
+    const pitchVector = { x: rightVector.x * cosY - rightVector.z * sinY, y: rightVector.y, z: rightVector.x * sinY + rightVector.z * cosY };
+
+
+    // rotate ry around 'x' (local x-axis)
+    const rx = this.rotateUV(ry, pitchVector, -this.rotation.x);
+
+    // there is NO rotate around z for cameras
+    // if (this.rotation.z) {
+    //   const localZ = { x: 0, y: 0, z: 1 };
+    //   const rz = this.rotateUV(rx, 0, -this.rotation.z);
+    //   return rz;
+    // }
+
+    return rx;
+  }
+  cameraRotate(p, rotation, axis = "y") {
+    const angle = -rotation[axis];
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     switch (axis) {
@@ -661,6 +728,7 @@ class Face extends GameObject {
   static count = 0;
   static sides = ["Front", "Back", "Top", "Bottom", "Left", "Right"];
   verts = [];
+  //facePoints = [];
   constructor(indexes, doubleSided = false) {
     super();
     this.doubleSided = doubleSided;
@@ -668,9 +736,9 @@ class Face extends GameObject {
     for (const a of indexes) this.verts.push(a);
   }
   getFacePoints(points) {
-    const localPoints = [];
-    for (const i of this.verts) localPoints.push(points[i]);
-    return localPoints;
+      const localPoints = [];
+      for (const i of this.verts) localPoints.push(points[i]);
+      return localPoints;
   }
   center(points) {
     let x = 0,
@@ -690,7 +758,7 @@ class Face extends GameObject {
     return c;
   }
   draw(parentPosition, points, color, camera) {
-    if (points.length !== camera.points.length) return;
+    //if (points.length !== camera.points.length) return;
     //console.assert(points.length === camera.points.length, "Bad points");
     const fp = this.getFacePoints(points);
 
@@ -773,7 +841,7 @@ class Face extends GameObject {
       // this.showNormals(fp, camNormal, camera);
     }
   }
-  fill(points, color, camera) {
+  fill(points, color, camera) { // called when drawing Plane
     const fp = this.getFacePoints(points);
     let c = 0;
     for (const p of fp) if (!p.xy) return;
@@ -817,11 +885,6 @@ class Face extends GameObject {
   drawFace(points, camera) {
     camera.view.beginPath();
     this.drawLines(points, camera);
-    //const oldStroke  = camera.view.strokeStyle;
-    //camera.view.strokeStyle = "black";
-    //camera.view.stroke();
-    //camera.view.strokeStyle = oldStroke;
-    //if (gameSettings.doubleDraw) this.drawLines(points, 1);
     camera.view.fill();
 
     if (
@@ -1085,6 +1148,7 @@ class Cylinder extends GameObject {
     }
     np.y *= northScale;
     sp.y *= southScale;
+    if (northScale < 1 || southScale < 1) this.concave = true;
 
     this.faces = [];
     // populate top faces (triangles)
@@ -1195,19 +1259,22 @@ class Triangle extends GameObject {
   faces = [new Face([0, 1, 2], true)];
 }
 class Torus extends GameObject {
+    concave = true;
     color = rndColor();
-    model =  [];
-    faces = [];
     constructor(x, y, z, rT = 1, rC = 0.5, segT = 8, segC = 8) {
         super(x, y, z);
-
+        this.init(rT, rC, segT, segC);
+        this._lod = segT;
+    }
+    init(rT, rC, segT, segC) {
         // consider a torus as a cylinder evenly curved around so the ends meet up
-
         const stepRC = Math.PI * 2 / segC; // step around axis of cylinder
-        const stepRT = Math.PI * 2 / segT; // step around axis of torus
+        const stepRT = Math.PI * 2 / segT; // step around axis of torus (line thru centre of hole)
         const np = { x: 0, y: rC, z: 0 };
 
         const points = [];
+        this.model = [];
+        this.faces = [];
 
         // calculate first circle/slice around surface of torus
         for (let i = 0; i < segC; i++) {
@@ -1226,6 +1293,7 @@ class Torus extends GameObject {
           }
         }
 
+        // calculate all faces of the torus
         for (let i = 0; i < segT; i++) {
           for (let j = 0; j < segC; j++) {
             const slice = i * segT;
@@ -1233,48 +1301,19 @@ class Torus extends GameObject {
             const b = ((j + 1) % segC) + slice;
             const c = ((segC + (( j + 1) % segC)) + slice) % (segC * segT);
             const d = (segC + j + slice) % (segC * segT);
-            //console.log(a, b, c, d);
             this.faces.push(new Face([a, b, c, d]));
           }
         }
 
+        // give each model point an id for debugging if needed
         //for (let i = 0; i < this.model.length; ++i) this.model[i].id = i;
     }
-    draw(camera) {
-      const points = [];
-      for (const p of this.model) {
-        const lp = this.toLocalPoint(p);
-        const wp = this.toWorldPoint(lp); // lp
-        const cp = this.toCameraPoint(wp, camera);
-        const xy = this.toXyPoint(cp, camera);
-        points.push({ wp, cp, xy, id: p.id });
-      }
-  
-      camera.points = [];
-      for (const p of this.points) {
-        const wp = { x: p.wp.x, y: p.wp.y, z: p.wp.z };
-        const cp = this.toCameraPoint(p.wp, camera);
-        const xy = this.toXyPoint(cp, camera);
-        camera.points.push({ wp, cp, xy, id: p.id });
-      }
-
-      // sort faces in descending order of distance from camera
-      for (const f of this.faces) {
-        const i = f.verts[0];
-        const p = this.points[i].wp;
-        f.distanceFromCamera = distSquared(camera.position, p);
-      }
-      this.faces.sort((a, b) => b.distanceFromCamera - a.distanceFromCamera);
-  
-      for (const f of this.faces)
-        f.draw(this.position, points, this.color, camera);
-  
-
-      // for (const p of camera.points) {
-      //   this.dot(p.xy, camera);
-      //   this.text(p.id, p.xy, camera);
-      // }
+    set lod(v) {
+      v = Math.floor(v);
+      this._lod = v;
+      if (v > 2 && v <=64) this.init(1, 0.5, v, v);
     }
+    get lod() { return this._lod; }
 }
 function distSquared(p1, p2) {
   return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2;
@@ -1283,6 +1322,7 @@ class PointLight extends GameObject {
   radius = 1000;
   angle = 0;
   color = [255, 255, 255];
+  count = 0;
   constructor(x = 0, y = 0, z = 20, d = 1) {
     super();
     this.position = { x, y, z };
@@ -1307,6 +1347,9 @@ class PointLight extends GameObject {
   }
   draw(camera) {
     this.angle = 0.01;
+    const sin = Math.sin(++this.count * (Math.PI / 45));
+    //console.log(sin.toFixed(3));
+    this.position.y += sin / 5;
     Object.assign(
       this.position,
       this.rotate(this.position, { y: this.angle * this.direction }, "y")
@@ -1497,6 +1540,7 @@ class Particle {
   }
   toXyPoint(p, camera) {
     if (p == null || p.z == 0) return null;
+    if (p == null || p.z == 0) return null;
     const xy = { x: (p.x / p.z) * camera.canvas.width, y: (p.y / p.z) * camera.canvas.width };
     return xy;
   }
@@ -1523,7 +1567,7 @@ class ParticleEmitter {
   direction = { x: 0, y: 1, z: 0 };
   speed = 0.3;
   spread = 0.5;
-  ttl = 300;
+  ttl = 1300;
   gravity = -0.005;
   particles = [];
   active = true;
@@ -1571,6 +1615,7 @@ class ParticleEmitter {
 class Rotation {
   #x = 0;
   #y = 0;
+  ttl = 0;
   #dirty = false;
   #direction = { x: 0, y: 0, z: 1 };
   get x() {
@@ -1592,48 +1637,52 @@ class Rotation {
   }
   get pitchVector() {
     return { x: Math.cos(-this.#y), y: 0, z: Math.sin(-this.#y) };
+    //return { x: Math.cos(-this.#y), y: 0, z: Math.sin(-this.#y) };
   }
   get direction() {
     if (this.#dirty) {
+      const cosY = Math.cos(-this.#y);
+      const sinY = Math.sin(-this.#y);
+      const heading = { x: -sinY, y: 0, z: cosY };
+      const pitchVector = { x: cosY, y: 0, z: sinY };
       Object.assign(
         this.#direction,
-        rotatePointAroundUnitVector(this.heading, this.pitchVector, -this.#x)
+        rotatePointAroundUnitVector(heading, pitchVector, -this.#x)
       );
       this.#dirty = false;
     }
     return this.#direction;
   }
+  animate(nx, ny) {
+    const steps = 100;
+    this.dx = (nx - this.#x) / steps ;
+    this.dy = (ny - this.#y) / steps;
+    this.ttl = steps;
+  }
+  update() {
+    if (this.ttl > 0) {
+      this.ttl -= 1;
+      this.#x += this.dx;
+      this.#y += this.dy;
+      this.#dirty = true;
+    }
+  }
 }
 class Camera extends GameObject {
+  concave = true;
   model = [ new Pt(0, 0, 0), new Pt(-1, 1, 3), new Pt(1, 1, 3), new Pt(1, -1, 3), new Pt(-1, -1, 3) ];
   faces = [ new Face([0, 1, 2], true), new Face([0, 2, 3], true), new Face([0, 3, 4], true), new Face([0, 4, 1], true) ];
-
-  // model = [
-  //   new Pt(0, 1, 0),
-  //   new Pt(1, 0, 1),
-  //   new Pt(1, 0, -1),
-  //   new Pt(-1, 0, -1),
-  //   new Pt(-1, 0, 1),
-  // ];
-  // faces = [
-  //   new Face([0, 1, 2]),
-  //   new Face([0, 2, 3]),
-  //   new Face([0, 3, 4]),
-  //   new Face([0, 4, 1]),
-  //   new Face([4, 3, 2, 1]),
-  // ];
-
-
   forwardVector = { x: 0, y: 0, z: 1 };
   rightVector = { x: 1, y: 0, z: 0 };
   upVector = { x: 0, y: 1, z: 0 };
   rotation = new Rotation(); // { x: 0, y: 0 };
   // rotation = { x: 0, y: 0 };
-  zoom = 1;
+  zoom = 1; 
   max = 500;
   min = 1;
   fov = 0;
   static #nextId = 0;
+  static Active = null;
   static Cameras = [];
   static get Count() { return Camera.Cameras.length; }
   constructor(x = 0, y = 0, z = 0, s = 1, sx = 1, sy = 1, sz = 1) {
@@ -1652,7 +1701,23 @@ class Camera extends GameObject {
       p.z *= sz;
       p.parent = this;
     }
-    for(let i = 0; i < this.model.length; ++i) this.model[i].id = i;
+    //for(let i = 0; i < this.model.length; ++i) this.model[i].id = i;
+  }
+  lookAt(go) {
+    // calc vector from camera to game object
+    const vector = subtractVector(this.position, go.position);
+    const unitVector = normaliseVector(vector);
+
+    // calc y angle of object to camera
+    const angleY = Math.atan2(unitVector.z, unitVector.x);
+    const adjustedY = -(angleY - Math.PI / 2);
+
+    // calc x angle
+    const ry = this.rotateY(unitVector, adjustedY);
+    const angleX = Math.atan2(ry.z, ry.y);
+    const adjustedX = -(angleX - Math.PI / 2);
+
+    this.rotation.animate(adjustedX, adjustedY);
   }
   get heading() {
     return {
@@ -1681,7 +1746,8 @@ class Camera extends GameObject {
     return this.rotation.direction;
   }
   get rightDirection() {
-    const rightPoint = this.rotate(this.rightVector, this.rotation, "y");
+    //const rightPoint = this.rotate(this.rightVector, this.rotation, "y");
+    const rightPoint = this.rotation.pitchVector;
     return rightPoint;
   }
   moveForward(dist) {
@@ -1721,6 +1787,19 @@ class Camera extends GameObject {
     this.canvas.backgroundPosition.x += 13;
     this.canvas.style.backgroundPositionX = `${this.canvas.backgroundPosition.x}px`;
   }
+  pitchUp(a) {
+    this.canvas.backgroundPosition.y -= a * 1330;
+
+    // clamp camera pitch between directly up and directly down
+    if (this.rotation.x < -Math.PI / 2) this.rotation.x = -Math.PI / 2;
+    else if (this.rotation.x > Math.PI / 2) this.rotation.x = Math.PI / 2;
+    else this.canvas.style.backgroundPositionY = `${this.canvas.backgroundPosition.y}px`;
+
+    this.rotation.x -= a;
+  }
+  pitchDown(a) {
+    this.pitchUp(-a);
+  }
   reset() {
     this.position.x = 0;
     this.position.y = 0;
@@ -1728,8 +1807,8 @@ class Camera extends GameObject {
     this.rotation.x = 0;
     this.rotation.y = 0;
   }
-  rotate(p, rotation, axis) {
-    if (p.parent != this) return super.rotate(p, rotation, axis);
+  cameraRotate(p, rotation, axis) {
+    //if (p.parent != this) return super.rotate(p, rotation, axis);
     const angle = -rotation[axis];
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
@@ -1742,9 +1821,13 @@ class Camera extends GameObject {
         return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos, z: p.z };
     }
   }
+  update() {
+    super.update();
+    this.rotation.update();
+  }
 }
 class Scene {
-  animate = true;
+  //animate = true;
   objects = [];
   lights = [];
   constructor(plane = null) {
@@ -1761,13 +1844,13 @@ class Scene {
     for (const o of this.objects) if (o.update) o.update();
   }
   draw(camera) {
-    if (this.animate) {
+    if (gameSettings.animate) {
       const w = camera.canvas.width;
       const h = camera.canvas.height;
       camera.view.clearRect(-w / 2, -h / 2, w, h);
       if (this.plane) this.plane.draw(camera);
       this.sort(camera);
-      for (const o of this.objects) if(o != camera) o.draw(camera);
+      for (const o of this.objects) if(o !== camera) o.draw(camera);
     }
   }
   sort(camera) { this.objects.sort((a, b) => b.distance(camera) - a.distance(camera)); }
@@ -1775,15 +1858,15 @@ class Scene {
 //#region Define objects
 const lightSource1 = new PointLight(0, 25, 20);
 lightSource1.color = [255, 255, 0];
-const lightSource2 = new PointLight(0, 5, -20, -1);
-lightSource2.color = [0, 0, 255];
+const lightSource2 = new PointLight(0, 5, -100, -1);
+lightSource2.color = [255, 69, 0];
 //const spotlight1 = new SpotLight(0, 0, 10);
 
 const camera1 = new Camera(0, 2, -80);
 camera1.color = [255, 0, 0, 0.5];
 const camera2 = new Camera(12, 2, -80);
 camera2.color = [0, 0, 255, 0.5];
-let activeCamera = camera1;
+Camera.Active = camera1;
 
 const pyramid4 = new Pyramid(12, -10, -80, 1, 1, 12);
 
@@ -1794,22 +1877,21 @@ const sphere = new Sphere(0, 0, 40, 4, 32, 4, 0.5);
 sphere.auto.x = 0.02;
 const cylinder = new Cylinder(-10, 0, 10, 1, 6, 3, 0.5, 6, 5, 1);
 cylinder.auto.y = 0.03;
-const pyramid = new Pyramid(0, -10, -50, 1, 1, 10);
+const pyramid = new Pyramid(-8, -10, -50, 1, 1, 10);
 const wedge = new Wedge(-3, 0, 0, 1, 1, 1);
-const sphere2 = new Sphere(0, 0, 20, 16);
+const sphere2 = new Sphere(50, 50, 20, 16);
 //const sphere3 = new Sphere(20, 0, 20, 16);
 const tri1 = new Triangle(0, 0, -50);
 const simple = new SimpleSphere(5, 0, 20);
 
 const pyramid3 = new Pyramid(0, -10, 100, 1, 1, 1);
 const torus = new Torus(0, 0, 100, 5, 2, 5, 5);
-//torus.auto.y = 0.01;
+torus.auto.y = 0.01;
 //torus.auto.z = 0.01;
 //#endregion
-const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
-const scene = new Scene(plane);
 //#region DatGui
 const gui = new dat.GUI();
+gui.add(torus, "lod", 3, 32).name("Torus Detail");
 gui.addColor(gameSettings, "debugColor").name("Debug Color");
 
 const cubeFolder = gui.addFolder("Cube");
@@ -1843,17 +1925,17 @@ sphereRotation.add(sphere.rotation, "z", -Math.PI, Math.PI);
 // light.add(spotlight1, "dpVariance", 0, 0.1);
 // light.add(spotlight1, "strength", 0, 10);
 const cam = gui.addFolder("Camera");
-cam.add(activeCamera, "max", 0, 1000);
-cam.add(activeCamera, "min", 0, 25);
-cam.add(activeCamera, "fov", -1, 1);
+cam.add(Camera.Active, "max", 0, 1000);
+cam.add(Camera.Active, "min", 0, 25);
+cam.add(Camera.Active, "fov", -1, 1);
 const camRotation = cam.addFolder("Rotation");
 const camPosition = cam.addFolder("Position");
-camRotation.add(activeCamera.rotation, "x", -1.5, 1.5).listen();
-camRotation.add(activeCamera.rotation, "y", -1.5, 1.5).listen();
-camPosition.add(activeCamera.position, "x", -100, 100).listen();
-camPosition.add(activeCamera.position, "y", -100, 100).listen();
-camPosition.add(activeCamera.position, "z", -100, 100).listen();
-gui.add(scene, "animate");
+camRotation.add(Camera.Active.rotation, "x", -1.5, 1.5).step(0.001).listen();
+camRotation.add(Camera.Active.rotation, "y", -1.5, 1.5).step(0.001).listen();
+camPosition.add(Camera.Active.position, "x", -100, 100).listen();
+camPosition.add(Camera.Active.position, "y", -100, 100).listen();
+camPosition.add(Camera.Active.position, "z", -100, 100).listen();
+gui.add(gameSettings, "animate");
 gui.add(gameSettings, "doubleDraw").name("Wireframe");
 gui.add(gameSettings, "showCrossHair").name("Crosshair");
 gui.add(simple, "radius", 0, 5);
@@ -1861,6 +1943,9 @@ gui.add(peg, "gravity", -0.1, 0);
 gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
+const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
+const scene = new Scene(plane);
+
 scene.add(camera1);
 scene.add(camera2);
 scene.add(pyramid4);
@@ -1873,14 +1958,16 @@ scene.add(wedge);
 scene.add(sphere2);
 // // //scene.add(sphere3);
 scene.addLight(lightSource1);
-// scene.addLight(lightSource2);
+scene.addLight(lightSource2);
 // scene.add(tri1);
 // scene.add(simple);
 // scene.add(peg);
 // scene.add(pyramid2);
 
 // scene.add(pyramid3);
-// scene.add(torus);
+scene.add(torus);
+//scene.add(peg);
+scene.add(pyramid2);
 //scene.add(spotlight1);
 
 //for(let i = 0; i < 100; ++i) scene.add(new Cube());
@@ -1893,26 +1980,29 @@ let delta = 0.1;
 function animate() {
   //#region Game Input
   if (GameInput.Control) delta = (delta == 0.1) ? 1: 0.1;
-  if (GameInput.Forward) activeCamera.moveForward(delta);
-  if (GameInput.Back) activeCamera.moveBack(delta);
-  if (GameInput.Right) activeCamera.moveRight(delta);
-  if (GameInput.Left) activeCamera.moveLeft(delta);
-  if (GameInput.TurnRight) { activeCamera.turnRight(); }
-  if (GameInput.TurnLeft) { activeCamera.turnLeft(); }
-  if (GameInput.Up) activeCamera.moveUp(delta * 10);
-  if (GameInput.Down) activeCamera.moveDown(delta * 10);
-  if (GameInput.Reset) activeCamera.reset();
-  if (GameInput.North) activeCamera.moveNorth(delta);
-  if (GameInput.South) activeCamera.moveNorth(-delta);
-  if (GameInput.Camera1) activeCamera = camera1;
-  if (GameInput.Camera2) activeCamera = camera2;
+  if (GameInput.Forward) Camera.Active.moveForward(delta);
+  if (GameInput.Back) Camera.Active.moveBack(delta);
+  if (GameInput.Right) Camera.Active.moveRight(delta);
+  if (GameInput.Left) Camera.Active.moveLeft(delta);
+  if (GameInput.TurnRight) { Camera.Active.turnRight(); }
+  if (GameInput.TurnLeft) { Camera.Active.turnLeft(); }
+  if (GameInput.Up) Camera.Active.moveUp(delta * 10);
+  if (GameInput.Down) Camera.Active.moveDown(delta * 10);
+  if (GameInput.Reset) Camera.Active.reset();
+  if (GameInput.North) Camera.Active.moveNorth(delta);
+  if (GameInput.South) Camera.Active.moveNorth(-delta);
+  if (GameInput.Camera1) Camera.Active = camera1;
+  if (GameInput.Camera2) Camera.Active = camera2;
+  if (GameInput.PitchUp) Camera.Active.pitchUp(0.005);
+  if (GameInput.PitchDown) Camera.Active.pitchDown(0.005);
+  if (GameInput.Look) Camera.Active.lookAt(torus);
   if (GameInput.Fire) {
     const bullet = new SimpleSphere(
-      activeCamera.position.x,
-      activeCamera.position.y,
-      activeCamera.position.z
+      Camera.Active.position.x,
+      Camera.Active.position.y,
+      Camera.Active.position.z
     );
-    bullet.direction = activeCamera.direction;
+    bullet.direction = Camera.Active.direction;
     bullet.speed = 1;
     bullet.scale = 0.2;
     scene.add(bullet);
@@ -1922,19 +2012,19 @@ function animate() {
   scene.draw(camera1);
   scene.draw(camera2);
   if (gameSettings.showCrossHair) {
-    const oldStroke = activeCamera.view.strokeStyle;
-    const oldLineWidth = activeCamera.view.lineWidth;
-    activeCamera.view.lineWidth = 2;
-    activeCamera.view.beginPath();
-    activeCamera.view.strokeStyle = "white";
-    activeCamera.view.arc(0, 0, gameSettings.crossHairRadius - 2, 0, Math.PI * 2);
-    activeCamera.view.stroke();
-    activeCamera.view.strokeStyle = "black";
-    activeCamera.view.beginPath();
-    activeCamera.view.arc(0, 0, gameSettings.crossHairRadius, 0, Math.PI * 2);
-    activeCamera.view.stroke();
-    activeCamera.view.lineWidth = oldLineWidth;
-    activeCamera.view.strokeStyle = oldStroke;
+    const oldStroke = Camera.Active.view.strokeStyle;
+    const oldLineWidth = Camera.Active.view.lineWidth;
+    Camera.Active.view.lineWidth = 2;
+    Camera.Active.view.beginPath();
+    Camera.Active.view.strokeStyle = "white";
+    Camera.Active.view.arc(0, 0, gameSettings.crossHairRadius - 2, 0, Math.PI * 2);
+    Camera.Active.view.stroke();
+    Camera.Active.view.strokeStyle = "black";
+    Camera.Active.view.beginPath();
+    Camera.Active.view.arc(0, 0, gameSettings.crossHairRadius, 0, Math.PI * 2);
+    Camera.Active.view.stroke();
+    Camera.Active.view.lineWidth = oldLineWidth;
+    Camera.Active.view.strokeStyle = oldStroke;
   }
   requestAnimationFrame(animate);
 }
