@@ -1567,7 +1567,7 @@ class ParticleEmitter {
   direction = { x: 0, y: 1, z: 0 };
   speed = 0.3;
   spread = 0.5;
-  ttl = 1300;
+  ttl = 300;
   gravity = -0.005;
   particles = [];
   active = true;
@@ -1849,11 +1849,14 @@ class Scene {
       const h = camera.canvas.height;
       camera.view.clearRect(-w / 2, -h / 2, w, h);
       if (this.plane) this.plane.draw(camera);
+      this.distance(camera);
       this.sort(camera);
-      for (const o of this.objects) if(o !== camera) o.draw(camera);
+      for (const o of this.filter(camera)) if(o !== camera) o.draw(camera);
     }
   }
-  sort(camera) { this.objects.sort((a, b) => b.distance(camera) - a.distance(camera)); }
+  distance(camera) { for(const o of this.objects) o.dfc = o.distance(camera); }
+  sort(camera) { this.objects.sort((a, b) => b.dfc - a.dfc); }
+  filter(camera) { return this.objects.filter(o => o.dfc < camera.max); }
 }
 //#region Define objects
 const lightSource1 = new PointLight(0, 25, 20);
@@ -1966,7 +1969,7 @@ scene.addLight(lightSource2);
 
 // scene.add(pyramid3);
 scene.add(torus);
-//scene.add(peg);
+scene.add(peg);
 scene.add(pyramid2);
 //scene.add(spotlight1);
 
