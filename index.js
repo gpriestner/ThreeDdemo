@@ -97,6 +97,7 @@ class GameInput {
   static get PitchUp() { return Keyboard.isDown("KeyE"); }
   static get PitchDown() { return Keyboard.isDown("KeyC"); }
   static get Look() { return Keyboard.isPressed("KeyL"); }
+  static get OpenFile() { return Keyboard.isPressed("KeyO"); }
 }
 //#endregion
 //#region Resize handler
@@ -118,6 +119,7 @@ function resetCameras() {
   setupCamera(Camera.Active);
   setupCamera(camera2);
 }
+const shadowOffset = 1;
 function setupCamera(camera) {
   console.assert(camera.view, "Camera MUST have a view");
   console.assert(camera.canvas, "Camera MUST have a canvas");
@@ -130,8 +132,8 @@ function setupCamera(camera) {
   camera.view.strokeStyle = "black";
   camera.view.lineWidth = 4;
   camera.view.lineJoin = "bevel";
-  camera.view.shadowOffsetX = 1;
-  camera.view.shadowOffsetY = 1;
+  camera.view.shadowOffsetX = shadowOffset;
+  camera.view.shadowOffsetY = shadowOffset;
   camera.view.font = "18px Arial";
 }
 function setupView(canvas) { // NOT used
@@ -141,8 +143,8 @@ function setupView(canvas) { // NOT used
   canvas.view.strokeStyle = "black";
   canvas.view.lineWidth = 4;
   canvas.view.lineJoin = "bevel";
-  canvas.view.shadowOffsetX = 1;
-  canvas.view.shadowOffsetY = 1;
+  canvas.view.shadowOffsetX = shadowOffset;
+  canvas.view.shadowOffsetY = shadowOffset;
   canvas.view.font = "18px Arial";
 }
 //resize();
@@ -683,46 +685,95 @@ class MultiFace extends GameObject {
     for (const x = 0; x < 10; ++x) {}
   }
 }
+class TerrainPoint {
+  #x; #y; #z; #radius;
+  constructor(x, y, z, r = 10) {
+    this.#x = x; // x coord of point
+    this.#y = y; // strength of point - how much the y coord is pulled/pushed up/down
+    this.#z = z; // z coord of point
+    this.#radius = r; // area size affected by the terrain point
+  }
+  get x() { return this.#x; }
+  get y() { return this.#y; }
+  get z() { return this.#z; }
+  get radius() { return this.#radius; }
+  set x(v) { this.#x = v; this?.parent.init(); }
+  set y(v) { this.#y = v; this?.parent.init(); }
+  set z(v) { this.#z = v; this?.parent.init(); }
+  set radius(v) { this.#radius = v; this?.parent.init(); }
+  effect(p) {
+    const dist = Math.sqrt((this.#x - p.x) ** 2 + (this.#z - p.z) ** 2);
+    if (dist < 0.1) p.y += this.#y;
+    else if (dist <= this.#radius) {
+      p.y += this.#y * (1 - dist / this.#radius)
+    }
+  }
+}
 class Plane extends GameObject {
+  concave = true;
+  terrainPoints = [];
   constructor(size, divs, y, colorA, colorB) {
     super();
-    const step = size / divs;
-    const start = -size / 2;
+    this.size = size;
+    this.divs = divs;
+    this.y = y;
+    this.colorA = colorA;
+    this.colorB = colorB;
+
+    this.init();
+  }
+  init() {
+    const step = this.size / this.divs;
+    const start = -this.size / 2;
     this.model = [];
-    for (let x = 0; x <= divs; ++x) {
-      for (let z = 0; z <= divs; ++z) {
+    for (let x = 0; x <= this.divs; ++x) {
+      for (let z = 0; z <= this.divs; ++z) {
         this.model.push({
           x: x * step + start,
-          y /*: y + Math.random() * 5*/,
+          y: this.y, //: y + Math.random() * 5,
           z: z * step + start,
         });
       }
     }
-    this.faces = [];
-    for (let x = 0; x < divs; ++x) {
-      for (let z = 0; z < divs; ++z) {
-        const i1 = z * (divs + 1) + x;
-        const i2 = i1 + 1;
-        const i3 = i1 + divs + 2;
-        const i4 = i3 - 1; //  i1 + divs + 1;
 
-        const face = new Face([i1, i2, i3, i4]);
-        face.color = x % 2 ^ z % 2 ? colorA : colorB;
-        this.faces.push(face);
+    for(const tp of this.terrainPoints) for (const p of this.model) tp.effect(p);
+
+    this.faces = [];
+    for (let x = 0; x < this.divs; ++x) {
+      for (let z = 0; z < this.divs; ++z) {
+        const i1 = z * (this.divs + 1) + x;
+        const i2 = i1 + 1;
+        const i3 = i1 + this.divs + 2;
+        const i4 = i3 - 1; //  i1 + this.divs + 1;
+
+        const color = x % 2 ^ z % 2 ? this.colorA : this.colorB;
+        // const face = new Face([i1, i2, i3, i4]);
+        const face1 = new Face([i1, i2, i3]);
+        const face2 = new Face([i4, i1, i3]);
+        // face.color = x % 2 ^ z % 2 ? this.colorA : this.colorB;
+        face1.color = color;
+        face2.color = color;
+        // this.faces.push(face);
+        this.faces.push(face1);
+        this.faces.push(face2);
       }
     }
   }
-  draw(camera) {
-    const points = [];
-    for (const point of this.model) {
-      const wp = point;
-      const cp = this.toCameraPoint(wp, camera);
-      const xy = this.toXyPoint(cp, camera);
-      points.push({ wp, cp, xy });
-    }
-    for (const f of this.faces) f.fill(points, f.color, camera);
-    //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
+  addTerrainPoint(tp) { 
+    this.terrainPoints.push(tp);
+    tp.parent = this;
   }
+  // draw(camera) {
+  //   const points = [];
+  //   for (const point of this.model) {
+  //     const wp = point;
+  //     const cp = this.toCameraPoint(wp, camera);
+  //     const xy = this.toXyPoint(cp, camera);
+  //     points.push({ wp, cp, xy });
+  //   }
+  //   for (const f of this.faces) f.fill(points, f.color, camera);
+  //   //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
+  // }
 }
 class Face extends GameObject {
   static count = 0;
@@ -758,6 +809,7 @@ class Face extends GameObject {
     return c;
   }
   draw(parentPosition, points, color, camera) {
+    if (this.color) color = this.color;
     //if (points.length !== camera.points.length) return;
     //console.assert(points.length === camera.points.length, "Bad points");
     const fp = this.getFacePoints(points);
@@ -847,7 +899,7 @@ class Face extends GameObject {
     for (const p of fp) if (!p.xy) return;
     let col = this.toRGB(color);
     camera.view.fillStyle = col;
-    //camera.view.shadowColor = view.fillStyle;
+    camera.view.shadowColor = col;
     camera.view.strokeStyle = col;
     this.drawFace(fp, camera);
     //this.text(this.id, fp[1].xy, camera);
@@ -1314,6 +1366,16 @@ class Torus extends GameObject {
       if (v > 2 && v <=64) this.init(1, 0.5, v, v);
     }
     get lod() { return this._lod; }
+}
+class FileObject extends GameObject {
+  color = rndColor();
+  constructor(x, y, z, s, model, faces) {
+    super(x, y, z, s);
+    this.model = [];
+    for(const m of model) this.model.push(new Pt(m[0], m[1], m[2]));
+    this.faces = [];
+    for(const f of faces) this.faces.push(new Face(f));
+  }
 }
 function distSquared(p1, p2) {
   return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2;
@@ -1827,11 +1889,13 @@ class Camera extends GameObject {
   }
 }
 class Scene {
-  //animate = true;
-  objects = [];
-  lights = [];
   constructor(plane = null) {
     this.plane = plane;
+    this.reset();
+  }
+  reset() {
+    this.objects = [];
+    this.lights = [];
   }
   add(o) {
     this.objects.push(o);
@@ -1841,6 +1905,7 @@ class Scene {
     this.add(l);
   }
   update() {
+    this.plane.update();
     for (const o of this.objects) if (o.update) o.update();
   }
   draw(camera) {
@@ -1859,6 +1924,7 @@ class Scene {
   filter(camera) { return this.objects.filter(o => o.dfc < camera.max); }
 }
 //#region Define objects
+const tp1 = new TerrainPoint(80, 130, 20, 50);
 const lightSource1 = new PointLight(0, 25, 20);
 lightSource1.color = [255, 255, 0];
 const lightSource2 = new PointLight(0, 5, -100, -1);
@@ -1896,6 +1962,14 @@ torus.auto.y = 0.01;
 const gui = new dat.GUI();
 gui.add(torus, "lod", 3, 32).name("Torus Detail");
 gui.addColor(gameSettings, "debugColor").name("Debug Color");
+
+if (tp1) {
+  const terrainFolder = gui.addFolder("Terrain Point");
+  terrainFolder.add(tp1, "x", 0, 100).step(1);
+  terrainFolder.add(tp1, "y", -100, 130).step(1);
+  terrainFolder.add(tp1, "z", 0, 100).step(1);
+  terrainFolder.add(tp1, "radius", 1, 100).step(1);
+}
 
 const cubeFolder = gui.addFolder("Cube");
 cubeFolder.add(cube, "scale", 1, 25).name("Scale");
@@ -1947,6 +2021,8 @@ gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
+plane.addTerrainPoint(tp1);
+plane.init();
 const scene = new Scene(plane);
 
 scene.add(camera1);
@@ -1999,6 +2075,7 @@ function animate() {
   if (GameInput.PitchUp) Camera.Active.pitchUp(0.005);
   if (GameInput.PitchDown) Camera.Active.pitchDown(0.005);
   if (GameInput.Look) Camera.Active.lookAt(torus);
+  if (GameInput.OpenFile) openFile();
   if (GameInput.Fire) {
     const bullet = new SimpleSphere(
       Camera.Active.position.x,
@@ -2030,6 +2107,29 @@ function animate() {
     Camera.Active.view.strokeStyle = oldStroke;
   }
   requestAnimationFrame(animate);
+}
+async function pickSingleFile() {
+  [fileHandle] = await window.showOpenFilePicker();
+  return await fileHandle.getFile();
+}
+async function readFile(file) {
+  const text = await file.text();
+  const lines = text.split("\n");
+  const verts = lines.filter(l => l[0] == 'v').map(v => v.split(' ').filter((_, i) => i > 0).map(Number));
+  const faces = lines.filter(l => l[0] == 'f').map(v => v.split(' ').filter((_, i) => i > 0).map(v => Number(v) - 1));
+  console.log(verts);
+  console.log(faces);
+  const fo = new FileObject(0, 0, 20, 1, verts, faces);
+  fo.concave = true;
+  const lightSource1 = new PointLight(0, 25, 20);
+  lightSource1.color = [255, 255, 0];
+  scene.reset();
+  scene.add(fo);
+  scene.addLight(lightSource1);
+  return text;
+}
+async function openFile() {
+  pickSingleFile().then(readFile).then(console.log).catch(console.error);
 }
 //resize();
 resetCameras();
