@@ -763,17 +763,17 @@ class Plane extends GameObject {
     this.terrainPoints.push(tp);
     tp.parent = this;
   }
-  // draw(camera) {
-  //   const points = [];
-  //   for (const point of this.model) {
-  //     const wp = point;
-  //     const cp = this.toCameraPoint(wp, camera);
-  //     const xy = this.toXyPoint(cp, camera);
-  //     points.push({ wp, cp, xy });
-  //   }
-  //   for (const f of this.faces) f.fill(points, f.color, camera);
-  //   //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
-  // }
+  draw(camera) {
+    const points = [];
+    for (const point of this.model) {
+      const wp = point;
+      const cp = this.toCameraPoint(wp, camera);
+      const xy = this.toXyPoint(cp, camera);
+      points.push({ wp, cp, xy });
+    }
+    for (const f of this.faces) f.fill(points, f.color, camera);
+    //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
+  }
 }
 class Face extends GameObject {
   static count = 0;
@@ -1285,6 +1285,30 @@ class Pyramid extends GameObject {
       p.y *= sy;
       p.z *= sz;
     }
+  }
+}
+class Cone extends GameObject {
+  color = rndColor();
+  model = [ new Pt(0, 0, 0), new Pt(0, 1, 0), new Pt(1, 1, 0) ];
+  constructor(x, y, z, s = 1, sx = 1, sy = 1, sz = 1, segs = 3) {
+    super(x, y, z, s);
+    const np = this.model[1];
+    const start = this.model[2];
+    const step = Math.PI * 2 / segs;
+    for(let i = 1; i < segs; ++i) {
+      const newPt = this.rotateY(start, i * step);
+      this.model.push(newPt);
+    }
+
+    for (const p of this.model) { p.x *= sx; p.y *= sy; p.z *= sz; }
+
+    this.faces = [];
+    for(let i = 2; i < 1 + segs; ++i) {
+      this.faces.push(new Face([0, i, i + 1]));
+      this.faces.push(new Face([1, i + 1, i]));
+    }
+    this.faces.push(new Face([0, segs + 1, 2]));
+    this.faces.push(new Face([1, 2, segs + 1]));
   }
 }
 class Wedge extends GameObject {
@@ -1937,6 +1961,8 @@ const camera2 = new Camera(12, 2, -80);
 camera2.color = [0, 0, 255, 0.5];
 Camera.Active = camera1;
 
+const cone1 = new Cone(12, 2, -70, 1, 1, 5, 1, 16);
+
 const pyramid4 = new Pyramid(12, -10, -80, 1, 1, 12);
 
 const peg = new ParticleEmitter(0, -9, 70);
@@ -2021,32 +2047,36 @@ gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
 const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
-plane.addTerrainPoint(tp1);
-plane.init();
+// plane.addTerrainPoint(tp1);
+// plane.init();
 const scene = new Scene(plane);
 
 scene.add(camera1);
-scene.add(camera2);
-scene.add(pyramid4);
+//scene.add(camera2);
+// scene.add(pyramid4);
 
-scene.add(cube);
-scene.add(sphere);
-scene.add(cylinder);
-scene.add(pyramid);
-scene.add(wedge);
-scene.add(sphere2);
-// // //scene.add(sphere3);
-scene.addLight(lightSource1);
-scene.addLight(lightSource2);
+// scene.add(cube);
+// scene.add(sphere);
+// scene.add(cylinder);
+// scene.add(pyramid);
+// scene.add(wedge);
+// scene.add(sphere2);
+// // // //scene.add(sphere3);
+
+//scene.addLight(lightSource1);
+//scene.addLight(lightSource2);
+
 // scene.add(tri1);
 // scene.add(simple);
 // scene.add(peg);
 // scene.add(pyramid2);
 
 // scene.add(pyramid3);
-scene.add(torus);
-scene.add(peg);
-scene.add(pyramid2);
+// scene.add(torus);
+// scene.add(peg);
+// scene.add(pyramid2);
+
+//scene.add(cone1);
 //scene.add(spotlight1);
 
 //for(let i = 0; i < 100; ++i) scene.add(new Cube());
