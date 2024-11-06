@@ -716,6 +716,9 @@ class Plane extends GameObject {
     super();
     this.size = size;
     this.divs = divs;
+    this.start = -this.size / 2;
+    this.end = -this.start;
+    this.step = this.size / this.divs;
     this.y = y;
     this.colorA = colorA;
     this.colorB = colorB;
@@ -723,18 +726,20 @@ class Plane extends GameObject {
     this.init();
   }
   init() {
-    const step = this.size / this.divs;
-    const start = -this.size / 2;
     this.model = [];
     for (let x = 0; x <= this.divs; ++x) {
       for (let z = 0; z <= this.divs; ++z) {
         this.model.push({
-          x: x * step + start,
+          x: x * this.step + this.start,
           y: this.y, //: y + Math.random() * 5,
-          z: z * step + start,
+          z: z * this.step + this.start,
         });
       }
     }
+    this.model[18].y = 1;
+
+    let c = 0;
+    for(const m of this.model) m.id = c++;
 
     for(const tp of this.terrainPoints) for (const p of this.model) tp.effect(p);
 
@@ -743,37 +748,80 @@ class Plane extends GameObject {
       for (let z = 0; z < this.divs; ++z) {
         const i1 = z * (this.divs + 1) + x;
         const i2 = i1 + 1;
-        const i3 = i1 + this.divs + 2;
-        const i4 = i3 - 1; //  i1 + this.divs + 1;
+        const i3 = i1 + this.divs + 1;
+        const i4 = i3 + 1;
 
         const color = x % 2 ^ z % 2 ? this.colorA : this.colorB;
-        // const face = new Face([i1, i2, i3, i4]);
         const face1 = new Face([i1, i2, i3]);
-        const face2 = new Face([i4, i1, i3]);
-        // face.color = x % 2 ^ z % 2 ? this.colorA : this.colorB;
+        const face2 = new Face([i2, i4, i3]);
         face1.color = color;
         face2.color = color;
-        // this.faces.push(face);
+
         this.faces.push(face1);
         this.faces.push(face2);
       }
     }
   }
+  height(p) {
+    // only calculate height within the area of the plane (outside = zero)
+    if (p.x < this.start || p.x >= this.end || p.z < this.start || p.z >= this.end) return 0;
+
+    // reverse precise x,z coords to model elements
+
+    const rxn = (p.x - this.start) / this.step;
+    const rxi = Math.floor(rxn);
+    const rxf = rxn - rxi;
+
+    const rzn = (p.z - this.start) / this.step;
+    const rzi = Math.floor(rzn);
+    const rzf = rzn - rzi;
+
+    const ri = rxi * (this.divs + 1) + rzi;
+
+    const position = this.model[ri];
+    const north = this.model[ri + 1];
+    const east = this.model[ri + this.divs + 1];
+    const northeast = this.model[ri + this.divs + 2];
+
+
+    // if x,z EXACTLY matches a point in the model, return the height of that point
+    if (rxf === 0 && rzf === 0) return position.y;
+
+    // if(rzp === 0) {} // lerp between 2 points
+    // if(rxp === 0) {} // lerp between 2 points
+
+    // decide which triangle in the quad is relavent
+    let height;
+    if (rxf + rzf > 1) {
+      // position is over northeast corner (2,4,3)
+      height = northeast.y;
+      height += (north.y - northeast.y) * (1 - rzf);
+      height += (east.y - northeast.y) * (1 - rxf);
+    }
+    else {
+      // position is over southwest corner (1,2,3)
+      height = position.y;
+      height += (north.y - position.y) * rzf;
+      height += (east.y - position.y) * rxf;
+    }
+
+    return height;
+  }
   addTerrainPoint(tp) { 
     this.terrainPoints.push(tp);
     tp.parent = this;
   }
-  draw(camera) {
-    const points = [];
-    for (const point of this.model) {
-      const wp = point;
-      const cp = this.toCameraPoint(wp, camera);
-      const xy = this.toXyPoint(cp, camera);
-      points.push({ wp, cp, xy });
-    }
-    for (const f of this.faces) f.fill(points, f.color, camera);
-    //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
-  }
+  // draw(camera) {
+  //   const points = [];
+  //   for (const point of this.model) {
+  //     const wp = point;
+  //     const cp = this.toCameraPoint(wp, camera);
+  //     const xy = this.toXyPoint(cp, camera);
+  //     points.push({ wp, cp, xy });
+  //   }
+  //   for (const f of this.faces) f.fill(points, f.color, camera);
+  //   //for(const f of this.faces) f.draw(null, points, [128,128,128], camera);
+  // }
 }
 class Face extends GameObject {
   static count = 0;
@@ -1309,6 +1357,11 @@ class Cone extends GameObject {
     }
     this.faces.push(new Face([0, segs + 1, 2]));
     this.faces.push(new Face([1, 2, segs + 1]));
+  }
+  update() {
+    const height = plane.height(this.position);
+    this.position.y = height;
+    super.update();
   }
 }
 class Wedge extends GameObject {
@@ -1955,13 +2008,13 @@ const lightSource2 = new PointLight(0, 5, -100, -1);
 lightSource2.color = [255, 69, 0];
 //const spotlight1 = new SpotLight(0, 0, 10);
 
-const camera1 = new Camera(0, 2, -80);
+const camera1 = new Camera(0, 1, 0);
 camera1.color = [255, 0, 0, 0.5];
 const camera2 = new Camera(12, 2, -80);
 camera2.color = [0, 0, 255, 0.5];
 Camera.Active = camera1;
 
-const cone1 = new Cone(12, 2, -70, 1, 1, 5, 1, 16);
+const cone1 = new Cone(2, 2, 2, 1, 0.2, 2, 0.2, 16);
 
 const pyramid4 = new Pyramid(12, -10, -80, 1, 1, 12);
 
@@ -1995,6 +2048,12 @@ if (tp1) {
   terrainFolder.add(tp1, "y", -100, 130).step(1);
   terrainFolder.add(tp1, "z", 0, 100).step(1);
   terrainFolder.add(tp1, "radius", 1, 100).step(1);
+}
+
+if (cone1) {
+  const coneFolder = gui.addFolder("Cone");
+  coneFolder.add(cone1.position, "x", -4, 4).step(0.1);
+  coneFolder.add(cone1.position, "z", -4, 4).step(0.1);
 }
 
 const cubeFolder = gui.addFolder("Cube");
@@ -2046,13 +2105,14 @@ gui.add(peg, "gravity", -0.1, 0);
 gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
-const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
-// plane.addTerrainPoint(tp1);
+//const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
+const plane = new Plane(8, 4, 0, [128, 128, 128], [192, 192, 192]);
+plane.addTerrainPoint(tp1);
 // plane.init();
 const scene = new Scene(plane);
 
 scene.add(camera1);
-//scene.add(camera2);
+scene.add(camera2);
 // scene.add(pyramid4);
 
 // scene.add(cube);
@@ -2063,8 +2123,8 @@ scene.add(camera1);
 // scene.add(sphere2);
 // // // //scene.add(sphere3);
 
-//scene.addLight(lightSource1);
-//scene.addLight(lightSource2);
+scene.addLight(lightSource1);
+scene.addLight(lightSource2);
 
 // scene.add(tri1);
 // scene.add(simple);
@@ -2076,7 +2136,7 @@ scene.add(camera1);
 // scene.add(peg);
 // scene.add(pyramid2);
 
-//scene.add(cone1);
+scene.add(cone1);
 //scene.add(spotlight1);
 
 //for(let i = 0; i < 100; ++i) scene.add(new Cube());
