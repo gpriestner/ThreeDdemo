@@ -429,6 +429,7 @@ function toDegrees(r) {
   return r * 180 / Math.PI;
 }
 //#endregion
+//#region Game classes
 class Pt {
   constructor(x = 0, y = 0, z = 0) {
     this.x = x;
@@ -738,8 +739,8 @@ class Plane extends GameObject {
     }
     this.model[18].y = 1;
 
-    let c = 0;
-    for(const m of this.model) m.id = c++;
+    // let c = 0;
+    // for(const m of this.model) m.id = c++;
 
     for(const tp of this.terrainPoints) for (const p of this.model) tp.effect(p);
 
@@ -2000,6 +2001,7 @@ class Scene {
   sort(camera) { this.objects.sort((a, b) => b.dfc - a.dfc); }
   filter(camera) { return this.objects.filter(o => o.dfc < camera.max); }
 }
+//#endregion
 //#region Define objects
 const tp1 = new TerrainPoint(80, 130, 20, 50);
 const lightSource1 = new PointLight(0, 25, 20);
@@ -2105,10 +2107,10 @@ gui.add(peg, "gravity", -0.1, 0);
 gui.add(peg, "speed", 0, 1);
 //#endregion
 //#region Setup scene
-//const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
-const plane = new Plane(8, 4, 0, [128, 128, 128], [192, 192, 192]);
+const plane = new Plane(400, 50, -10, [128, 128, 128], [192, 192, 192]);
+//const plane = new Plane(8, 4, 0, [128, 128, 128], [192, 192, 192]);
 plane.addTerrainPoint(tp1);
-// plane.init();
+plane.init();
 const scene = new Scene(plane);
 
 scene.add(camera1);
